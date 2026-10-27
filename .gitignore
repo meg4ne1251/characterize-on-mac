@@ -1,0 +1,55 @@
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Temporary files and logs (at any directory depth)
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+*.bak
+*.log
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+.local/
+.idea/
+.vscode/
+
+# Python caches and generated packages
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Build products
+build/
+dist/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+*.o
+*.a
+*.so
+*.dylib
+*.dSYM/
+
+# Locally installed FBX SDK
+sdk/
+
+# Local source assets and generated FBX files
+/data/*
+!/data/README.md
