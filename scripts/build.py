@@ -34,7 +34,7 @@ def build(tests=False):
     command = ["xcrun", "clang++", "-std=c++17", "-O2", "-Wall", "-Wextra",
                "-Wno-unused-parameter", "-Wno-deprecated-declarations",
                "-isystem", str(sdk / "include"), "-I", str(source),
-               str(source / "scene.cpp"), str(source / "tpose.cpp"), str(main),
+               str(source / "scene.cpp"), str(source / "tpose.cpp"), str(source / "shaders.cpp"), str(source / "media.cpp"), str(main),
                str(library), "-framework", "CoreFoundation", "-liconv", "-lz", "-lxml2",
                "-o", str(target)]
     subprocess.run(command, check=True, cwd=ROOT)

@@ -25,6 +25,8 @@ def main():
     parser.add_argument('--expected', type=Path, default=ROOT / 'data/expected')
     parser.add_argument('--output', type=Path, default=ROOT / 'data/output')
     parser.add_argument('--force', action='store_true')
+    parser.add_argument('--flat-shader', action='store_true', help='全メッシュに Flat シェーダーを適用して保存後も検査する')
+    parser.add_argument('--external-textures', action='store_true', help='画像を埋め込まず .assets に同梱する')
     args = parser.parse_args()
     binary = ROOT / 'build/characterize'
     audit = ROOT / 'build/native-tests'
@@ -48,6 +50,10 @@ def main():
         report_path = reports / f'{source.stem}.json'
         command = ['configure', source, '--name', source.stem, '--output', target,
                    '--correct-tpose', '--report', report_path]
+        if args.flat_shader:
+            command += ['--flat-shader']
+        if args.external_textures:
+            command += ['--external-textures']
         reference = args.expected / f'{source.stem}_MB.fbx'
         if reference.is_file():
             command += ['--texture-reference', reference]
@@ -61,8 +67,23 @@ def main():
         status, result = run_json(binary, *command)
         row = {'model': source.name, 'output': target.name, 'ok': status == 0 and result.get('ok', False),
                'source_unchanged': before_hash == hashlib.sha256(source.read_bytes()).hexdigest(),
+               'texture_storage': result.get('texture_storage'),
                'motionbuilder_verified': False}
         if result.get('output_written'):
+            if args.flat_shader or not args.external_textures:
+                checks = ['check', target]
+                if args.flat_shader:
+                    checks += ['--require-flat-shader']
+                if not args.external_textures:
+                    checks += ['--require-embedded-textures']
+                check_status, saved = run_json(binary, *checks)
+                saved_ok = check_status == 0 and saved.get('ok', False)
+                if args.flat_shader:
+                    row['flat_shader_ok'] = saved_ok
+                    row['flat_shader_meshes'] = len(saved.get('scene', {}).get('meshes', []))
+                if not args.external_textures:
+                    row['embedded_textures_ok'] = saved_ok
+                row['ok'] = row['ok'] and saved_ok
             audit_status, preserved = run_json(audit, '--audit', source, target)
             (reports / f'{source.stem}-preservation.json').write_text(json.dumps(preserved, ensure_ascii=False, indent=2) + '\n')
             row['preservation_ok'] = audit_status == 0 and preserved['ok']

@@ -39,6 +39,7 @@ Scene::Scene() {
 Scene::~Scene() { if (manager) manager->Destroy(); }
 void Scene::load(const fs::path& path, const fs::path& extractFolder) {
     source = fs::absolute(path);
+    extractedMedia = extractFolder.empty() ? fs::path() : fs::absolute(extractFolder);
     if (!fs::is_regular_file(source)) throw std::runtime_error("入力ファイルがありません: " + source.string());
     // The CLI supplies its ignored cache directory for embedded image extraction.
     // Never create an .fbm directory next to the source just by inspecting it.
@@ -56,7 +57,8 @@ void Scene::load(const fs::path& path, const fs::path& extractFolder) {
     std::string message = importer->GetStatus().GetErrorString(); importer->Destroy();
     if (!ok) throw std::runtime_error("FBX の読み込みに失敗: " + message);
 }
-void Scene::save(const fs::path& path, bool ascii) {
+void Scene::save(const fs::path& path, bool ascii, bool embedTextures) {
+    if(ascii && embedTextures)throw std::runtime_error("画像の埋め込みにはバイナリ FBX が必要です。");
     auto exporter = FbxExporter::Create(manager, "");
     int format = -1;
     for (int i=0; i<manager->GetIOPluginRegistry()->GetWriterFormatCount(); ++i) {
@@ -66,7 +68,7 @@ void Scene::save(const fs::path& path, bool ascii) {
     }
     auto io = manager->GetIOSettings();
     io->SetBoolProp(EXP_FBX_CHARACTER, true); io->SetBoolProp(EXP_FBX_CONSTRAINT, true);
-    io->SetBoolProp(EXP_FBX_EMBEDDED, false);
+    io->SetBoolProp(EXP_FBX_EMBEDDED, embedTextures);
     if (!exporter->Initialize(path.c_str(), format, io)) {
         std::string message = exporter->GetStatus().GetErrorString(); exporter->Destroy();
         throw std::runtime_error("出力の初期化に失敗: " + message);
@@ -138,6 +140,8 @@ Json Scene::inventory() const {
             for (const auto& sh : shapeNames(mesh)) shapes.push(sh);
             for (int i=0;i<n->GetMaterialCount();++i) materials.push(n->GetMaterial(i)->GetName());
             m["shapes"]=shapes; m["materials"]=materials;
+            Json shaders=Json::array();for(auto shader:modelShaders(n))shaders.push(shaderInventory(shader));
+            m["shaders"]=shaders;
             m["skin_deformers"]=mesh->GetDeformerCount(FbxDeformer::eSkin); meshes.push(m);
         }
     }
@@ -154,6 +158,7 @@ Json Scene::inventory() const {
     }
     for (int i=0;i<scene->GetSrcObjectCount<FbxSurfaceMaterial>();++i) {
         auto mat=scene->GetSrcObject<FbxSurfaceMaterial>(i); Json m=Json::object(), texs=Json::array(); m["name"]=mat->GetName();
+        m["shading_model"]=mat->ShadingModel.Get().Buffer();
         auto prop=mat->FindProperty(FbxSurfaceMaterial::sDiffuse);
         for (int j=0;j<prop.GetSrcObjectCount<FbxFileTexture>();++j) {
             auto tex=prop.GetSrcObject<FbxFileTexture>(j); Json t=Json::object();
@@ -175,6 +180,11 @@ Json Scene::inventory() const {
         c["members"]=members;collections.push(c);
     }
     out["collections"]=collections;
+    Json shaders=Json::array();
+    for(int i=0;i<scene->GetSrcObjectCount();++i) {
+        auto object=scene->GetSrcObject(i);if(isMotionBuilderShader(object))shaders.push(shaderInventory(object));
+    }
+    out["shaders"]=shaders;
     return out;
 }
 bool validCharacterName(const std::string& name) {

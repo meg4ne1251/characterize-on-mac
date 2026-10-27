@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <functional>
+#include <chrono>
 #include "audit.h"
 
 using namespace cmac;
@@ -79,12 +80,16 @@ FbxVector4 deformed(Scene& s,int cp) {
 void pipeline(Scene& s,Bones& bones,const fs::path& folder,Report& report) {
     correctPose(s,bones,report,75);applyTextures(s,folder,report);createCharacter(s,bones,"Test_Miku",true,report);createGroups(s,bones,"Test_Miku",report);validate(s,bones,report,0.01);
 }
+#include "shaders.h"
+#include "media.h"
 int main(int argc,char** argv){
     try {
         if(argc==4&&std::string(argv[1])=="--audit") {
             bool passed=false;auto result=auditFiles(argv[2],argv[3],&passed);std::cout<<result.dump()<<'\n';return passed?0:2;
         }
         auto root=fs::absolute(argc>1?argv[1]:"build/test-data");fs::create_directories(root);
+        testShaders(root);
+        testEmbeddedMedia(root);
         Scene s;auto b=fixture(s,root);require(b.size()==73,"all 73 slots in fixture");
         auto before=deformed(s,0);require(near(before,global(b.at("LeftForeArm")).GetT()),"skin initially matches arm endpoint");
         auto points=meshNode(s)->GetMesh()->GetControlPoints();FbxVector4 original=points[0];

@@ -67,7 +67,31 @@ build/characterize configure data/input/Chis-A.fbx \
 
 `--texture-reference` は同名マテリアルの Diffuse 画像を取得します。参照側に埋め込まれた画像も扱えます。ボーン・メッシュ・ウェイトは処理前 FBX のものを使います。`--textures` と同時には指定できません。
 
-両方を省略した場合は入力側の画像接続を保持します。見つからない画像を別の画像で代用したり、複数の同名画像から適当に選択したりはしません。使用中の画像は出力隣の `<出力名>.assets/` にコピーし、絶対パスと相対パスを設定します。配布・移動時は FBX と `.assets` フォルダをセットにしてください。
+両方を省略した場合は入力側の画像接続を保持します。見つからない画像を別の画像で代用したり、複数の同名画像から適当に選択したりはしません。
+
+### 画像の埋め込み（標準）
+
+画像は標準でバイナリ FBX に埋め込みます。`--embed-textures` で明示することもできます。渡すファイルは FBX だけでよく、`tex` や `.assets` フォルダを一緒に渡す必要はありません。読み込み側の MotionBuilder などが `.fbm` フォルダを作ることはありますが、FBX 内の画像を自動展開したもので、事前に用意するものではありません。
+
+```sh
+build/characterize configure data/input/Chis-A.fbx \
+  --output data/output/Chis-A_embedded.fbx \
+  --name Chis-A --textures data/input/tex \
+  --correct-tpose --flat-shader
+
+build/characterize check data/output/Chis-A_embedded.fbx \
+  --require-embedded-textures --require-flat-shader
+```
+
+保存後は新しいキャッシュへ画像を展開し、外部パスへフォールバックせずに FBX 内から全テクスチャを復元できることと、保存前後の画像内容・接続数が一致することを検査します。Diffuse 以外の既存の画像接続も保持して埋め込みます。別フォルダの同名画像が展開時に上書きされないよう、埋め込み用の画像名は内容から生成します。入力の画像名や内容は変更しません。
+
+埋め込み準備の画像コピーは `tmp/export-media/`、再読み込み時の画像は `tmp/embedded/` に置きます。配布には不要なキャッシュで、削除できます。埋め込む画像が見つからない場合、画像シーケンスの場合、保存後に復元・照合できない場合は出力しません。この失敗は `--allow-check-errors` でも続行しません。
+
+`check --require-embedded-textures` は毎回新しい展開先を使います。単に外部画像が存在するだけの FBX は、この検査に合格しません。`configure` の JSON の `texture_storage` は `embedded`、埋め込み情報は `operations` の `embed_textures`、再読み込み検査結果は `export.roundtrip` の詳細に記録します。
+
+### 外部画像での運用
+
+従来の外部参照版が必要な場合は `--external-textures` を付けます。出力隣の `<出力名>.assets/` に画像をコピーし、絶対パスと相対パスを設定します。この方式だけは、配布・移動時に FBX と `.assets` フォルダをセットにしてください。`--embed-textures` と同時には指定できません。既存の外部参照版も再度 `configure` で出力すれば埋め込み版にできます（既存 Character がある場合は `--replace-character` も必要）。
 
 既存 Character の対応付けを使ってボーンを改名し、作り直す場合:
 
@@ -81,6 +105,31 @@ build/characterize configure data/expected/Megane_TETO_MB.fbx \
 `--rename-from-character` は Character が1つの場合に使えます。通常の処理でも、既知の旧命名（`Arm_L`、`HandIndex_L1`、`HandIndex_L.0` など）は現行名へ正規化します。名前空間は保持します。複数の同名ボーンがある場合は `--namespace 名前空間` を指定します。Spine の番号ずれや不明な命名は推測しません。
 
 既存の出力・レポートへ再出力するときは `--force` を追加します。入力 FBX 自体への上書きは禁止しています。
+
+## Flat シェーダーの適用
+
+`configure` に `--flat-shader` を付けると、全メッシュに MotionBuilder の Flat シェーダーを適用します。Character にスキン接続していないメッシュや、マテリアルのないメッシュも対象です。
+
+```sh
+build/characterize configure data/input/Gakupo.fbx \
+  --output data/output/Gakupo_flat.fbx \
+  --name Gakupo \
+  --texture-reference data/expected/Gakupo_MB.fbx \
+  --correct-tpose --flat-shader \
+  --report tmp/Gakupo-flat-result.json
+
+build/characterize check data/output/Gakupo_flat.fbx --require-flat-shader
+```
+
+MotionBuilder のシェーダーはマテリアルへの値ではなく、モデルへの接続として保存されます。このオプションは、共有する1つの Flat シェーダーで全メッシュの既存シェーダー接続を置き換えます。複数マテリアルを持つメッシュにも適用されます。以前のシェーダーオブジェクト自体と、メッシュ以外への接続は保持します。使われていないマテリアルには表示対象がありません。
+
+Flat の色の参照元はマテリアル・テクスチャ、シェーダーの Alpha は1、Transparency は Accurate Transparency とし、元マテリアルの色・画像接続・透明度は変更しません。`ShadingModel` の文字列やポリゴン法線の変更ではありません。`--flat-shader` を省略すると既存シェーダーを保持します。再度適用しても、このツールが作成したシェーダーを再利用します。
+
+実装は、提供された Gakupo / Chis-A / kiritan の処理済み FBX にある `MotionBuilder_Generic` / `FlatShader` のプロパティ・バージョン情報・接続形式をもとにしています。実行時に参照 FBX を必要としません。保存後にも、全メッシュに有効な Flat シェーダーだけが接続され、設定とバージョン情報が保持されていることを検査します。この検査に失敗した場合は `--allow-check-errors` を指定しても保存しません。
+
+`inspect` と `check` の JSON では、`scene.shaders` と各 `scene.meshes[].shaders` でシェーダーを確認できます。`check --require-flat-shader` はこのツールの Flat 設定との一致も必須にします。通常の `check` では Flat を必須にしません。
+
+MotionBuilder 上での表示、透明部分の描画は未検証です。`motionbuilder_verified` は false のままです。Autodesk の説明も [シェーダーはモデルへ適用する](https://help.autodesk.com/cloudhelp/2023/ENU/MotionBuilder/files/GUID-FAD77D08-1FF5-43C6-A96E-FABF3CCC8845.htm) としており、[Flat の透明度設定](https://help.autodesk.com/cloudhelp/2024/ENU/MotionBuilder/files/GUID-7C725701-AF43-405D-ACB8-56CEA1A72233.htm) は MotionBuilder での目視確認が必要です。
 
 ## Tポーズ補正の範囲
 
@@ -103,7 +152,7 @@ build/characterize configure data/expected/Megane_TETO_MB.fbx \
 
 通常は検査不合格時に FBX を保存しません。`--allow-check-errors` を指定すると、定義作成後の規格チェックが不合格でも検証用 FBX を保存できます。終了コードは2のままで、`ok` は false です。マッピングやポーズ補正そのものの失敗は、このオプションでも続行しません。
 
-FBX は一時ファイルへ書き出し、SDK で開き直して検査してから出力先へ移動します。途中で失敗した場合、コピー済みの `.assets` が残ることがあります。`motionbuilder_verified` は、この Mac での検査だけでは true にしません。
+FBX は一時ファイルへ書き出し、SDK で開き直して検査してから出力先へ移動します。`--external-textures` で途中に失敗した場合、コピー済みの `.assets` が残ることがあります。`motionbuilder_verified` は、この Mac での検査だけでは true にしません。
 
 ## テスト
 
@@ -112,6 +161,7 @@ python3 scripts/build.py --tests
 build/native-tests
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 python3 scripts/validate_models.py --force
+python3 scripts/validate_models.py --flat-shader --output data/output/flat-shader --force
 ```
 
-最後のコマンドは `data/input/*.fbx` と、存在すれば `data/expected/*_MB.fbx` を使います。出力先は `data/output/`、詳細レポートは `data/output/reports/` です。入力ファイルの SHA-256 が処理前後で一致することも確認します。
+モデル検証は `data/input/*.fbx` と、存在すれば `data/expected/*_MB.fbx` を使います。通常の出力先は `data/output/`、詳細レポートは `data/output/reports/` です。最後のコマンドは Flat 適用版を `data/output/flat-shader/` に出力し、保存後の Flat 設定も検査します。入力ファイルの SHA-256 が処理前後で一致することも確認します。

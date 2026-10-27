@@ -9,7 +9,7 @@
 | `Map_CharacterBone.py` | 73スロットとサークルのボーン名 | `mapping.inc`。MotionBuilder の名称と FBX SDK の enum が異なるため、73件すべて SDK のスロット名で検証 |
 | `RenameSkeleton.py` | 既存 Character のスロットをもとに改名 | `--rename-from-character`。名前衝突を事前確認し、一時名を挟んで一括改名 |
 | `Characterize.py` | 名前検査、マッピング、SetCharacterizeOn、可視化、ノードサイズ、X-Ray | 名前検査、15必須スロットと Parent の検査、階層検査、FbxCharacter とスタンスオフセット、Characterize フラグ、可視化、サイズ設定。X-Ray は Viewer 固有 |
-| `ApplyTextures.py` | 既存メディア等の削除、画像名＝マテリアル名で Diffuse 適用 | `--textures`。同名候補の曖昧さ・欠落を検査。既存の他チャンネルやシェーダーは保持。処理済み FBX の画像を参照する `--texture-reference` も追加 |
+| `ApplyTextures.py` | 既存メディア等の削除、画像名＝マテリアル名で Diffuse 適用 | `--textures`。同名候補の曖昧さ・欠落を検査。既存の他チャンネルやシェーダーは保持。処理済み FBX の画像を参照する `--texture-reference` も追加。画像は標準で FBX に埋め込み、保存後に全画像を復元・照合 |
 | `GroupCreation.py` | Character のリンクとスキンメッシュを2グループへ | 同名の `FbxSelectionSet` を作成。対象外グループは保持。MotionBuilder の FBGroup としての表示は未確認 |
 | `CheckConfiguration.py` | Character 数、名前、Reference、可視性、シェイプ重複、母音、テクスチャ、グループ | ファイル内の実データから検査。UV・画像の存在・グループのメンバー・Tポーズも検査。全件まとめて JSON 出力 |
 | `ConfigureManager.py` | GUI 内の作業済みフラグ | フラグに依存せず、保存後も再検査できる形へ置き換え |
@@ -34,6 +34,8 @@
 - 元記事では HIK Template を忘れず出力するよう案内していますが、元スクリプト自体にその出力処理はありません。この実装も助言として表示し、未確認の XML を互換テンプレートとして出力しません。
 
 ## 互換性の境界
+
+追加の `--flat-shader` は、提供された処理済み FBX の `MotionBuilder_Generic` / `FlatShader` をもとに、全メッシュへのシェーダー接続と設定を作成します。元スクリプトの必須処理としてではなく、明示オプションとして追加しています。マテリアルの `ShadingModel` は変更しません。SDK での保存後の設定・接続保持は検査しますが、MotionBuilder 上の表示互換性は未検証です。詳細は [Flat シェーダーの適用](setup.md#flat-シェーダーの適用) を参照してください。
 
 SDK で Character 定義を書き、フラグとマッピングが保存後も残ることは確認しています。MotionBuilder がその定義をロック済み Character として正しく評価すること、HIK でリターゲットできること、SelectionSet が FBGroup として表示されることは、MotionBuilder 側での確認が必要です。テスト結果の `ok` は SDK 上の検査合格を表し、完全互換の証明ではありません。
 

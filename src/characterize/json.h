@@ -26,6 +26,10 @@ public:
     static Json object() { Json v; v.value_ = Object{}; return v; }
     Json& operator[](const std::string& k) { return std::get<Object>(value_)[k]; }
     void push(Json v) { std::get<Array>(value_).push_back(std::move(v)); }
+    void extend(const Json& other) {
+        auto& target=std::get<Array>(value_);const auto& source=std::get<Array>(other.value_);
+        target.insert(target.end(),source.begin(),source.end());
+    }
     static std::string quote(const std::string& s) {
         std::ostringstream out; out << '"';
         for (unsigned char c : s) {

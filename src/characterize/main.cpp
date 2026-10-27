@@ -11,7 +11,8 @@ namespace {
 struct Options {
     std::string command, name, ns;
     fs::path input,output,textures,textureReference,report;
-    bool correct=false,rename=false,replace=false,force=false,allowErrors=false;
+    bool correct=false,rename=false,replace=false,force=false,allowErrors=false,flat=false,requireFlat=false;
+    bool embed=true,storageOption=false,requireEmbedded=false;
     double tolerance=1.0,maxAngle=75.0;
 };
 void help() {
@@ -19,14 +20,18 @@ void help() {
 
   characterize inspect INPUT.fbx [--report report.json]
   characterize check INPUT.fbx [--report report.json] [--tolerance 1]
+      [--require-flat-shader] [--require-embedded-textures]
   characterize configure INPUT.fbx --output OUTPUT.fbx --name Vimii_Miku
       [--textures DIRECTORY] [--correct-tpose] [--rename-from-character]
       [--texture-reference PROCESSED.fbx]
+      [--flat-shader]
+      [--embed-textures | --external-textures]
       [--replace-character] [--namespace NAME] [--report report.json]
       [--tolerance 1] [--max-correction-angle 75] [--allow-check-errors] [--force]
 
 結果は JSON で標準出力にも出力します。終了コード: 0=成功、2=チェック不合格、1=実行エラー。
 入力は変更しません。既存の出力を置換する場合だけ --force を指定してください。
+画像は標準で FBX に埋め込みます。--external-textures の場合は .assets も同梱してください。
 FBX 定義の作成と MotionBuilder の HIK ソルバ検証は別です。
 )";
 }
@@ -41,6 +46,12 @@ Options parse(int argc,char** argv) {
         if(a=="--name")o.name=value();else if(a=="--output")o.output=value();
         else if(a=="--textures")o.textures=value();else if(a=="--texture-reference")o.textureReference=value();else if(a=="--report")o.report=value();
         else if(a=="--namespace")o.ns=value();else if(a=="--correct-tpose")o.correct=true;
+        else if(a=="--flat-shader")o.flat=true;else if(a=="--require-flat-shader")o.requireFlat=true;
+        else if(a=="--require-embedded-textures")o.requireEmbedded=true;
+        else if(a=="--embed-textures"||a=="--external-textures") {
+            if(o.storageOption)throw std::runtime_error("画像の保存方式は1つ指定してください。");
+            o.embed=a=="--embed-textures";o.storageOption=true;
+        }
         else if(a=="--rename-from-character")o.rename=true;else if(a=="--replace-character")o.replace=true;
         else if(a=="--force")o.force=true;else if(a=="--allow-check-errors")o.allowErrors=true;
         else if(a=="--tolerance"||a=="--max-correction-angle") {
@@ -51,7 +62,9 @@ Options parse(int argc,char** argv) {
     }
     if(o.command=="configure"&&(o.output.empty()||o.name.empty()))throw std::runtime_error("configure には --output と --name が必要です。");
     if(!o.textures.empty()&&!o.textureReference.empty())throw std::runtime_error("--textures と --texture-reference はどちらか一方を指定してください。");
-    if(o.command!="configure"&&(!o.output.empty()||!o.name.empty()||!o.textures.empty()||!o.textureReference.empty()||o.correct||o.rename||o.replace||o.allowErrors))
+    if(o.requireFlat&&o.command!="check")throw std::runtime_error("--require-flat-shader は check で使用してください。");
+    if(o.requireEmbedded&&o.command!="check")throw std::runtime_error("--require-embedded-textures は check で使用してください。");
+    if(o.command!="configure"&&(!o.output.empty()||!o.name.empty()||!o.textures.empty()||!o.textureReference.empty()||o.correct||o.rename||o.replace||o.allowErrors||o.flat||o.storageOption))
         throw std::runtime_error("変更用オプションは configure で使用してください。");
     return o;
 }
@@ -122,7 +135,9 @@ int main(int argc,char** argv) {
             if(normalized(o.output)==normalized(o.report.empty()?o.input:o.report))throw std::runtime_error("FBX とレポートには別々の出力先を指定してください。");
             if(o.output.extension()!=".fbx")throw std::runtime_error("出力には .fbx 拡張子を指定してください。");
         }
-        Scene s;s.load(o.input,cacheFor(o.input));Report report;
+        auto extraction=cacheFor(o.input);
+        if(o.requireEmbedded||o.command=="configure")extraction+="-verify-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+        Scene s;s.load(o.input,extraction);Report report;
         bool useExisting=o.command!="configure"&&s.scene->GetCharacterCount()==1;
         Bones bones;
         bool wrote=false;
@@ -132,6 +147,8 @@ int main(int argc,char** argv) {
             bones=resolve(s,report,o.ns,useExisting);
             if(s.scene->GetGlobalSettings().GetAxisSystem()!=FbxAxisSystem::Motionbuilder)report.add("error","scene.axes","MotionBuilder の軸規約ではありません。configure で軸変換してください。");
             validate(s,bones,report,o.tolerance);
+            if(o.requireFlat)validateFlatShaders(s,report);
+            if(o.requireEmbedded)validateEmbeddedTextures(s,extraction,report);
         }else {
             if(!validCharacterName(o.name))report.add("error","character.name","Character名が不適切です。例: Vimii_Miku");
             if(s.scene->GetCharacterCount()&&!o.replace)report.add("error","character.exists","既存 Character の置換には --replace-character が必要です。");
@@ -151,26 +168,47 @@ int main(int argc,char** argv) {
             }
             if(report.ok())createCharacter(s,bones,o.name,o.replace,report);
             if(report.ok())createGroups(s,bones,o.name,report);
+            if(report.ok()&&o.flat)applyFlatShader(s,report);
             if(report.ok()) {
                 validate(s,bones,report,o.tolerance);
                 if(report.ok()||o.allowErrors) {
-                    packageTextures(s,o.output,report);rebaseTextures(s,o.output);
                     staging=o.output.parent_path()/("."+o.output.stem().string()+"."+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".tmp.fbx");
-                    s.save(staging);
-                    Scene reopened;reopened.load(staging);Report check;
-                    auto reopenedBones=resolve(reopened,check,o.ns,true);validate(reopened,reopenedBones,check,o.tolerance);
-                    if(!check.ok()&&!o.allowErrors) {
-                        report.add("error","export.roundtrip","保存後の再読み込みチェックに失敗しました。FBX は出力しません。",check.json());
-                        fs::remove(staging);staging.clear();
-                    } else {
-                        fs::rename(staging,o.output);staging.clear();wrote=true;
-                        report.add("info","export.roundtrip","FBX を保存し再読み込みしました。",check.json());
+                    TextureManifest embedded;Report media;
+                    if(o.embed) {
+                        embedded=prepareEmbeddedTextures(s,fs::absolute("tmp/export-media")/staging.stem(),media);
+                        report.findings.insert(report.findings.end(),media.findings.begin(),media.findings.end());
+                        report.operations.extend(media.operations);
+                    }else {packageTextures(s,o.output,report);rebaseTextures(s,o.output);}
+                    // Media failures are not waived by --allow-check-errors.
+                    if(media.ok()) {
+                        s.save(staging,false,o.embed);
+                        auto extracted=cacheFor(staging);
+                        Scene reopened;reopened.load(staging,o.embed?extracted:fs::path());Report check;
+                        auto reopenedBones=resolve(reopened,check,o.ns,true);validate(reopened,reopenedBones,check,o.tolerance);
+                        Report shaderCheck;
+                        if(o.flat) {
+                            validateFlatShaders(reopened,shaderCheck);
+                            check.findings.insert(check.findings.end(),shaderCheck.findings.begin(),shaderCheck.findings.end());
+                        }
+                        Report mediaCheck;if(o.embed) {
+                            validateEmbeddedTextures(reopened,extracted,mediaCheck,&embedded);
+                            check.findings.insert(check.findings.end(),mediaCheck.findings.begin(),mediaCheck.findings.end());
+                            check.operations.extend(mediaCheck.operations);
+                        }
+                        if(!shaderCheck.ok()||!mediaCheck.ok()||(!check.ok()&&!o.allowErrors)) {
+                            report.add("error","export.roundtrip","保存後の再読み込みチェックに失敗しました。FBX は出力しません。",check.json());
+                            fs::remove(staging);staging.clear();
+                        } else {
+                            fs::rename(staging,o.output);staging.clear();wrote=true;
+                            report.add("info","export.roundtrip","FBX を保存し再読み込みしました。",check.json());
+                        }
                     }
                 }
             }
         }
         auto result=report.json();result["command"]=o.command;result["input"]=fs::absolute(o.input).string();
         result["output_written"]=wrote; if(wrote)result["output"]=fs::absolute(o.output).string();
+        if(o.command=="configure")result["texture_storage"]=o.embed?"embedded":"external";
         result["scene"]=s.inventory();result["pose_angles"]=poseAngles(bones);
         writeReport(o.report,result);std::cout<<result.dump()<<'\n';
         return report.ok()?0:2;

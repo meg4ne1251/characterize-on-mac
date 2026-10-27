@@ -1,4 +1,4 @@
-# 検証結果（2026-10-27）
+# 検証結果（2026-10-28 更新）
 
 ## 環境
 
@@ -20,14 +20,46 @@ macOS 27.0.1 / Apple Silicon arm64 / FBX C++ SDK 2020.3.11。Maya・MotionBuilde
 
 データ保持の照合では、メッシュ・ノード数、元の頂点座標、ポリゴンの接続、UV、法線、マテリアルスロット、シェイプターゲット、スキン接続、ウェイト、バインド行列を確認しています。腕・脚のボーン長も照合し、最大相対誤差は `5.76e-9` 未満でした。これはポーズ変更前後の基礎データの保持を検査するもので、全モデルの見た目・リターゲットの品質まで保証するものではありません。
 
-出力は `data/output/*_mac.fbx` と対応する `.assets/`、詳細 JSON は `data/output/reports/` にあります。いずれも Git 対象外です。
+初回（2026-10-27）の出力は外部参照版で、`data/output/*_mac.fbx` と対応する `.assets/`、詳細 JSON は `data/output/reports/` にあります。いずれも Git 対象外です。現在の標準出力は画像埋め込み版です。既存の外部参照ファイルが自動で変わるわけではありません。
 
 ## 自動テスト
 
-- ネイティブテスト: **174 assertions 合格**。73スロットすべての SDK 識別子、マッピング、A→T補正、スキン変形の追従、頂点・バインド保持、保存後の再読み込み、再補正、pre/post rotation、旧名、改名衝突、重複シェイプ、不正スケール、アニメーション拒否を検証。
-- CLI 結合テスト: **12件合格**。入力不変、出力の検査、JSON、再改名、既存 Character・既存出力の保護、不正な名前・角度、画像の曖昧さ、アニメーションを検証。
+- ネイティブテスト: **219 assertions 合格**。73スロットすべての SDK 識別子、マッピング、A→T補正、スキン変形の追従、頂点・バインド保持、保存後の再読み込み、再補正、pre/post rotation、旧名、改名衝突、重複シェイプ、不正スケール、アニメーション拒否を検証。Flat については、複数・共有マテリアル、非スキンメッシュ、マテリアルなしメッシュ、既存シェーダー接続の置換、名前衝突、再適用、マテリアルの色・画像・透明度保持、バイナリ・ASCII 保存後の設定と接続を検証。埋め込みについては、元画像・準備キャッシュを隠した状態での FBX 単体の復元、同名で内容が違う画像、Diffuse 以外のチャンネル保持、外部参照版の不合格、画像不足・画像シーケンス・ASCII 埋め込みの拒否を検証。
+- CLI 結合テスト: **19件合格**。入力不変、出力の検査、JSON、再改名、既存 Character・既存出力の保護、不正な名前・角度、画像の曖昧さ、アニメーションを検証。Flat の適用・保存後チェック・再適用、オプション省略時の既存シェーダー保持に加え、標準の画像埋め込み、FBX だけの移動、外部参照版の埋め込み検査不合格、保存方式の引数検査、埋め込み失敗時の既存出力保護も検証。
+
+## Chis-A の画像埋め込み（2026-10-28）
+
+ユーザー提供の `data/input/tex/` を使い、`data/output/texture-check/Chis-A_embedded.fbx` を作成しました。画像は FBX 内に埋め込み、全4メッシュへ Flat を適用しています。以前の `Chis-A_mac.fbx` は外部参照版です。
+
+- 全27マテリアルの Diffuse 画像を、マテリアルと同名の提供 PNG から設定。
+- 既存の他チャンネルも保持し、全81テクスチャ接続・内容が異なる12画像を埋め込み。複数マテリアルが同じ画像内容を共有するため、マテリアル数と画像数は一致しません。
+- FBX だけを新しいフォルダへコピーし、`check --require-embedded-textures --require-flat-shader` に合格。外部画像パスへのフォールバックではなく、その FBX から新しく展開した画像を検査。
+- 全27マテリアルについて、復元した Diffuse 画像と提供 PNG の SHA-256 が一致。
+- 入力 FBX と提供 PNG の SHA-256 は変更なし。モデルの頂点・UV・シェイプ・ウェイト・バインド行列などの保持検査にも合格。
+
+FBX は28,715,744バイト。検証結果は `data/output/texture-check/reports/embedded-summary.json`、データ保持は `Chis-A-embedded-preservation.json` に保存しています。開く側で `.fbm` が生成されることはありますが、渡すのは FBX だけで構いません。今回の埋め込み版を MotionBuilder で開いた結果はまだ確認していないため、`motionbuilder_verified` は false です。
+
+既存5モデルへの追加検証は `python3 scripts/validate_models.py --flat-shader --output tmp/embedded-model-validation --force` で実施しました。Chis-A / GUMI / Gakupo / Rakuteni は画像埋め込み・Flat・データ保持・入力不変の検査に合格しました。kiritan は、処理前 FBX に残る旧 `base_color_texture` / `alpha_texture` の元画像が見つからず、`texture.embed_source` で出力を停止しました。参照 `_MB` の Diffuse 画像だけでは、保持対象の旧チャンネルの画像まで補えません。画像を推測して代用したり、接続を削除して合格扱いにしたりはしていません。詳細は `tmp/embedded-model-validation/reports/summary.json` に記録しています。
 
 ## 表示・互換性の確認状況
+
+### Flat シェーダーの追加検証
+
+`python3 scripts/validate_models.py --flat-shader --output data/output/flat-shader --force` で5モデルを処理しました。全モデルで、出力 FBX を開き直した `check --require-flat-shader` とデータ保持の照合に合格しました。入力ファイルの SHA-256 も処理前後で一致しています。
+
+| モデル | Flat 適用メッシュ数 | 保存後の Flat 検査 | データ保持 |
+|---|---:|---|---|
+| Chis-A | 4 | 合格 | 合格 |
+| GUMI | 5 | 合格 | 合格 |
+| Gakupo | 5 | 合格 | 合格 |
+| Rakuteni | 5 | 合格 | 合格 |
+| kiritan | 5 | 合格 | 合格 |
+
+結果は `data/output/flat-shader/`、詳細は `data/output/flat-shader/reports/summary.json` と各モデルのレポートに保存しています。Gakupo / Chis-A / kiritan の参照 `_MB` にある Flat シェーダーについても、実装が検査する設定・バージョン情報との一致を確認しました。参照ファイルの全メッシュに Flat が接続されていることを合格条件にはしていません。
+
+これは FBX 内の設定と接続の検証です。MotionBuilder での読み込み・表示・透明部分の描画は未検証であり、`motionbuilder_verified` は false のままです。
+
+### 既存の表示確認
 
 FBX Review 1.5.4 で `Gakupo_mac.fbx` を読み込み、ソリッド表示でメッシュの腕が水平なTポーズになることを確認しました。全モデルのテクスチャ表示、肩・手首・指・足裏・衣服の見た目については、追加の目視確認が必要です。
 
