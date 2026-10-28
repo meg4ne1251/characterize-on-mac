@@ -196,7 +196,7 @@ int main(int argc,char** argv) {
                 report.add("info","scene.axes_converted","MotionBuilder の座標系へ変換しました。");
             }
             bones=resolve(s,report,o.ns,o.rename);validateSkeleton(bones,report);
-            if(!bones.count("Reference"))report.add("error","mapping.missing_reference","サークルの規約に必要な Parent がありません。");
+            if(!bones.count("Reference"))report.add("error","mapping.missing_reference","ボーンマッピングに必要な Parent がありません。");
             if(report.ok())renameBones(s,bones,report);
             if(report.ok()&&o.correct)correctPose(s,bones,report,o.maxAngle);
             if(report.ok())checkPose(bones,report,o.tolerance);

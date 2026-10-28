@@ -51,5 +51,7 @@ CMakeCache.txt
 sdk/
 
 # Local source assets and generated FBX files
+*.[fF][bB][xX]
+*.[fF][bB][mM]/
 /data/*
 !/data/README.md

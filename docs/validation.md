@@ -8,7 +8,7 @@
 
 macOS 27.0.1 / Apple Silicon arm64 / FBX C++ SDK 2020.3.11。Mac 側は Maya・MotionBuilder を使わず、独立した C++ ツールとして確認しました。別途、Windows / MotionBuilder 2026 の実機テスト結果を受領し、Chis-A の修正候補の模様表示と FBX 単体の移動成功を確認しました。詳細は [Windows の検証結果](windows-motionbuilder-results.md) を参照してください。
 
-## 提供モデルによる検証
+## 初回のモデル検証（外部参照版・過去の記録）
 
 以下は `python3 scripts/validate_models.py --force` の結果です。処理前モデルから出力し、対応する `_MB` がある4件では画像を参照しました。GUMI は入力の画像接続を使いました。
 
@@ -53,7 +53,7 @@ FBX は28,715,744バイト。検証結果は `data/output/texture-check/reports/
 
 ## 表示・互換性の確認状況
 
-### Flat シェーダーの追加検証
+### Flat シェーダーの追加検証（過去の記録）
 
 `python3 scripts/validate_models.py --flat-shader --output data/output/flat-shader --force` で5モデルを処理しました。全モデルで、出力 FBX を開き直した `check --require-flat-shader` とデータ保持の照合に合格しました。入力ファイルの SHA-256 も処理前後で一致しています。
 
@@ -75,4 +75,4 @@ FBX Review 1.5.4 で `Gakupo_mac.fbx` を読み込み、ソリッド表示でメ
 
 Windows / MotionBuilder 2026 で Chis-A の修正候補の模様表示を確認しました。HIK の有効化、リターゲット、MotionBuilder 固有のグループやシェーダーとの完全互換は未確認であり、レポートでも `motionbuilder_verified: false` を維持します。SDK の再読み込みが通ったことを HIK の検証成功とは扱いません。
 
-参照 `_MB` にも脚の傾きや複数 Character があるため、ファイル全体の一致を合格条件にはしていません。詳細は [提供資料の解析](source-analysis.md) を参照してください。
+参照 `_MB` にも脚の傾きや複数 Character があるため、ファイル全体の一致を合格条件にはしていません。詳細は [実装の設計](source-analysis.md) を参照してください。

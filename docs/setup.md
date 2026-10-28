@@ -85,7 +85,7 @@ build/characterize check data/output/Chis-A_mobu_fixed.fbx \
 
 保存後は新しいキャッシュへ画像を展開し、外部パスへフォールバックせずに FBX 内から全テクスチャを復元できることと、保存前後の画像内容・接続数が一致することを検査します。埋め込み画像は元のファイル名を保ち、同名で内容が異なる場合だけ識別用の接尾辞を付けます。入力の画像名や内容は変更しません。
 
-通常は Diffuse 以外の既存の画像接続も保持して埋め込みます。元の MotionBuilder スクリプトのように古い画像接続を消して適用し直す場合は、`--textures` または `--texture-reference` とあわせて `--reset-textures` を指定します。出力側 Scene の全テクスチャ・動画を削除するため、透明度・法線等の画像接続も削除されます。マテリアルのスカラー値は保持します。上のコマンドは、Chis-A の修正候補を Windows / MotionBuilder 2026 で表示確認したときの設定です。確認範囲は [Windows の検証結果](windows-motionbuilder-results.md) を参照してください。
+通常は Diffuse 以外の既存の画像接続も保持して埋め込みます。古い画像接続を消して適用し直す場合は、`--textures` または `--texture-reference` とあわせて `--reset-textures` を指定します。出力側 Scene の全テクスチャ・動画を削除するため、透明度・法線等の画像接続も削除されます。マテリアルのスカラー値は保持します。上のコマンドは、Chis-A の修正候補を Windows / MotionBuilder 2026 で表示確認したときの設定です。確認範囲は [Windows の検証結果](windows-motionbuilder-results.md) を参照してください。
 
 フォルダから適用する画像には、使用先メッシュの先頭 UV 名を指定します。マテリアルを共有するメッシュで先頭 UV 名が異なる場合は、空文字で各メッシュの先頭 UV を選びます。存在しない UV 名は `check.texture_uv` エラーです。`inspect` / `check` の `scene.materials[].diffuse_textures[]` で、`uv_set`、`use_material`、`videos`（画像パスと `VideoProperty` 接続）を確認できます。
 
@@ -162,10 +162,18 @@ FBX は一時ファイルへ書き出し、SDK で開き直して検査してか
 
 ## テスト
 
+配布されていない実モデルを使わず、SDK で合成したフィクスチャによる自動テストを実行できます。CLI 本体とテスト用バイナリの両方をビルドします。
+
 ```sh
+python3 scripts/build.py
 python3 scripts/build.py --tests
 build/native-tests
 python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+自身で用意した実モデルを使う追加検証:
+
+```sh
 python3 scripts/validate_models.py --force
 python3 scripts/validate_models.py --flat-shader --output data/output/flat-shader --force
 ```

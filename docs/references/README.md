@@ -1,16 +1,7 @@
 # 関連資料
 
-提供された Notion 書き出しと VLLModelConfigure2 2025.2 の原本は `tmp/` に保持しています。[解析結果と実装の対応](../source-analysis.md) を参照してください。
+公開されている API ドキュメントや、リポジトリで共有できる検証メモの追加先です。[実装の設計と互換性](../source-analysis.md) に主要な API の参照先をまとめています。
 
-キャラクタライズに関する資料、URL、作業メモをこのディレクトリへ追加します。Markdown、PDF、画像など、元の形式で構いません。
+資料を追加する場合は、資料名・出典 URL、対象の MotionBuilder バージョン、関連する処理、確認結果を添えてください。外部資料は原本の転載よりも参照先へのリンクを使います。
 
-資料ごとに、分かる範囲で以下を添えてください。
-
-- 資料名・URL・出典。
-- どの作業に関係するか。
-- 現在の手順、期待する結果、困っている点。
-- 使用している MotionBuilder のバージョン。
-
-作業手順を書く場合は、入力 FBX の状態、操作内容、出力時の設定、完了の確認方法があると、必要な処理を整理できます。
-
-MotionBuilder のスクリプトは [`scripts/motionbuilder/`](../../scripts/motionbuilder/README.md)、大きな検証データは Git 対象外の `data/` に置きます。
+ローカルで使用するモデル・画像は Git 対象外の `data/`、非公開の資料・既存スクリプトは Git 対象外の `tmp/` に置きます。MotionBuilder 側で実行する公開用の検証スクリプトの追加先は [`scripts/motionbuilder/`](../../scripts/motionbuilder/README.md) です。

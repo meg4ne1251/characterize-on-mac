@@ -12,7 +12,7 @@ JSON の `operations` に `mesh_display`、`scene.meshes[]` に `shading_mode`�
 
 ## Viewer 全体の設定との違い
 
-MotionBuilder の [FBViewingOptions.DisplayMode](https://help.autodesk.com/cloudhelp/2026/ENU/MOBU-PYTHON-API-REF/classpyfbsdk_1_1_f_b_viewing_options.html) は、Viewer 全体の設定です。元の `ApplyTextures.py` は、MotionBuilder 実行中にこれを `kFBModelShadingAll` に切り替えています。
+MotionBuilder の [FBViewingOptions.DisplayMode](https://help.autodesk.com/cloudhelp/2026/ENU/MOBU-PYTHON-API-REF/classpyfbsdk_1_1_f_b_viewing_options.html) は、Viewer 全体の設定です。FBX の各モデルに保存する FullShading とは設定対象が異なります。
 
 FBX のモデル表示指定が保存されることと、Viewer の Display メニュー自体が読み込み時に Textures + Shaders へ切り替わることは、別の検証事項です。Mac の FBX SDK だけでは後者を確認できませんが、今回の出力はユーザーの実機確認で初期状態のテクスチャ・シェーダー表示に合格しました。Viewer の未確認のプロパティや、別用途の `CameraViewingMode` / `DefaultViewingMode` を推測して追加していません。
 

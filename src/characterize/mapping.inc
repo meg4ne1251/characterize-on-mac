@@ -1,5 +1,5 @@
-// VLLModelConfigure2 2025.2 mapping, translated to FBX SDK node IDs.
-// Source kept unchanged under ignored tmp/. SDK names differ from MotionBuilder slot names.
+// Map supported bone names to FBX SDK character node IDs.
+// SDK enum names differ from MotionBuilder slot names.
     {"Reference", "Parent", FbxCharacter::eReference, false},
     {"Hips", "Hips", FbxCharacter::eHips, true},
     {"LeftUpLeg", "UpLeg_L", FbxCharacter::eLeftHip, true},
