@@ -75,15 +75,19 @@ build/characterize configure data/input/Chis-A.fbx \
 
 ```sh
 build/characterize configure data/input/Chis-A.fbx \
-  --output data/output/Chis-A_embedded.fbx \
-  --name Chis-A --textures data/input/tex \
+  --output data/output/Chis-A_mobu_fixed.fbx \
+  --name Chis-A --textures data/input/tex --reset-textures \
   --correct-tpose --flat-shader
 
-build/characterize check data/output/Chis-A_embedded.fbx \
+build/characterize check data/output/Chis-A_mobu_fixed.fbx \
   --require-embedded-textures --require-flat-shader
 ```
 
-保存後は新しいキャッシュへ画像を展開し、外部パスへフォールバックせずに FBX 内から全テクスチャを復元できることと、保存前後の画像内容・接続数が一致することを検査します。Diffuse 以外の既存の画像接続も保持して埋め込みます。別フォルダの同名画像が展開時に上書きされないよう、埋め込み用の画像名は内容から生成します。入力の画像名や内容は変更しません。
+保存後は新しいキャッシュへ画像を展開し、外部パスへフォールバックせずに FBX 内から全テクスチャを復元できることと、保存前後の画像内容・接続数が一致することを検査します。埋め込み画像は元のファイル名を保ち、同名で内容が異なる場合だけ識別用の接尾辞を付けます。入力の画像名や内容は変更しません。
+
+通常は Diffuse 以外の既存の画像接続も保持して埋め込みます。元の MotionBuilder スクリプトのように古い画像接続を消して適用し直す場合は、`--textures` または `--texture-reference` とあわせて `--reset-textures` を指定します。出力側 Scene の全テクスチャ・動画を削除するため、透明度・法線等の画像接続も削除されます。マテリアルのスカラー値は保持します。上のコマンドは、Chis-A の修正候補を Windows / MotionBuilder 2026 で表示確認したときの設定です。確認範囲は [Windows の検証結果](windows-motionbuilder-results.md) を参照してください。
+
+フォルダから適用する画像には、使用先メッシュの先頭 UV 名を指定します。マテリアルを共有するメッシュで先頭 UV 名が異なる場合は、空文字で各メッシュの先頭 UV を選びます。存在しない UV 名は `check.texture_uv` エラーです。`inspect` / `check` の `scene.materials[].diffuse_textures[]` で、`uv_set`、`use_material`、`videos`（画像パスと `VideoProperty` 接続）を確認できます。
 
 埋め込み準備の画像コピーは `tmp/export-media/`、再読み込み時の画像は `tmp/embedded/` に置きます。配布には不要なキャッシュで、削除できます。埋め込む画像が見つからない場合、画像シーケンスの場合、保存後に復元・照合できない場合は出力しません。この失敗は `--allow-check-errors` でも続行しません。
 
@@ -108,6 +112,8 @@ build/characterize configure data/expected/Megane_TETO_MB.fbx \
 
 ## Flat シェーダーの適用
 
+`configure` は `--flat-shader` の有無にかかわらず、全メッシュに FBX の `FullShading` 表示指定を保存します。提供された MotionBuilder 参照 FBX と同じ `Shading: U` です。保存後に再読み込みして保持を検査します。マテリアルやシェーダーの種類を変更する処理とは別です。Chis-A_textured_display.fbx は、MotionBuilder で開いた初期状態からテクスチャとシェーダーが反映されることをユーザー確認済みです。[確認結果と制限](motionbuilder-display.md)を参照してください。
+
 `configure` に `--flat-shader` を付けると、全メッシュに MotionBuilder の Flat シェーダーを適用します。Character にスキン接続していないメッシュや、マテリアルのないメッシュも対象です。
 
 ```sh
@@ -129,7 +135,7 @@ Flat の色の参照元はマテリアル・テクスチャ、シェーダーの
 
 `inspect` と `check` の JSON では、`scene.shaders` と各 `scene.meshes[].shaders` でシェーダーを確認できます。`check --require-flat-shader` はこのツールの Flat 設定との一致も必須にします。通常の `check` では Flat を必須にしません。
 
-MotionBuilder 上での表示、透明部分の描画は未検証です。`motionbuilder_verified` は false のままです。Autodesk の説明も [シェーダーはモデルへ適用する](https://help.autodesk.com/cloudhelp/2023/ENU/MotionBuilder/files/GUID-FAD77D08-1FF5-43C6-A96E-FABF3CCC8845.htm) としており、[Flat の透明度設定](https://help.autodesk.com/cloudhelp/2024/ENU/MotionBuilder/files/GUID-7C725701-AF43-405D-ACB8-56CEA1A72233.htm) は MotionBuilder での目視確認が必要です。
+Chis-A の修正候補は Windows / MotionBuilder 2026 で Flat の復元と模様の表示を確認済みです。透明部分の全方向・重なり順や、他モデル・他バージョンの表示は未確認です。CLI 自身は MotionBuilder を実行しないため、生成レポートの `motionbuilder_verified` は false のままです。個別ファイルの実機での確認結果は [Windows の検証結果](windows-motionbuilder-results.md) に記録しています。
 
 ## Tポーズ補正の範囲
 

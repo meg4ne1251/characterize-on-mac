@@ -13,7 +13,8 @@
 - マテリアル名と同名の画像による Diffuse 適用、処理済み FBX からの画像参照。
 - 画像を標準で FBX に埋め込み、FBX 単体から全画像を復元・照合。明示指定で外部画像の同梱も可能。
 - Skeleton / Mesh の SelectionSet 作成。
-- 全メッシュへの MotionBuilder Flat シェーダーの設定（`--flat-shader`）、保存後の設定・接続の検査。MotionBuilder 上の表示は未検証。
+- `configure` で全メッシュの表示指定を FullShading に設定。FBX 保存後の保持を検査し、Chis-A は MotionBuilder で開いた直後のテクスチャ・シェーダー表示をユーザー確認済み。
+- 全メッシュへの MotionBuilder Flat シェーダーの設定（`--flat-shader`）、保存後の設定・接続の検査。Chis-A の修正候補は Windows / MotionBuilder 2026 で模様の表示と FBX 単体の移動を確認済み。
 - 母音シェイプ、メッシュ間のシェイプ重複、画像、UV、グループなどの検査と助言。
 - JSON レポート、保存後の再読み込み検査、元データを変更しない別ファイルへの出力。
 
@@ -36,6 +37,16 @@ build/characterize configure data/input/Gakupo.fbx \
 
 既存の出力やレポートを置換するときは `--force` を追加します。通常の利用では `--texture-reference` の代わりに `--textures 画像フォルダ` を指定できます。入力の画像接続をそのまま使える場合は両方を省略できます。
 
+Chis-A の単色表示を修正した、Windows で表示確認済みの設定を使う場合:
+
+```sh
+build/characterize configure data/input/Chis-A.fbx \
+  --output data/output/Chis-A_mobu_fixed.fbx --name Chis-A \
+  --textures data/input/tex --reset-textures --correct-tpose --flat-shader
+```
+
+`--reset-textures` は既存の透明度・法線などの画像接続も削除して画像を適用し直すため、明示指定にしています。画像から選ぶ UV 名、動画接続、元の画像名を保った埋め込みは修正済みです。確認範囲と原因分析は [Windows の検証結果](docs/windows-motionbuilder-results.md) を参照してください。
+
 画像は標準で FBX に埋め込まれるため、出力 FBX だけを渡せます。外部画像で運用する場合だけ `--external-textures` を付け、出力隣の `.assets` フォルダも同梱してください。以前作成した外部参照版の FBX は、再出力するまで埋め込みには変わりません。
 
 全メッシュを Flat シェーダーにする場合は `configure` に `--flat-shader` を追加します。既存のシェーダー接続を置き換え、マテリアルの色・画像・透明度は保持します。省略した場合はシェーダーを変更しません。
@@ -43,6 +54,8 @@ build/characterize configure data/input/Gakupo.fbx \
 - [セットアップ・全オプション・テスト方法](docs/setup.md)
 - [元資料の解析と機能の対応、互換性の境界](docs/source-analysis.md)
 - [実モデルによる検証結果](docs/validation.md)
+- [Windows / MotionBuilder のテクスチャ検証結果](docs/windows-motionbuilder-results.md)
+- [FBX の初期表示設定と Viewer の確認手順](docs/motionbuilder-display.md)
 - [要件と今後の確認項目](docs/requirements.md)
 
 ## 構成

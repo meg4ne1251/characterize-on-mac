@@ -2,7 +2,7 @@
 
 ## 環境
 
-macOS 27.0.1 / Apple Silicon arm64 / FBX C++ SDK 2020.3.11。Maya・MotionBuilder は実行せず、独立した C++ ツールとして確認しました。
+macOS 27.0.1 / Apple Silicon arm64 / FBX C++ SDK 2020.3.11。Mac 側は Maya・MotionBuilder を使わず、独立した C++ ツールとして確認しました。別途、Windows / MotionBuilder 2026 の実機テスト結果を受領し、Chis-A の修正候補の模様表示と FBX 単体の移動成功を確認しました。詳細は [Windows の検証結果](windows-motionbuilder-results.md) を参照してください。
 
 ## 提供モデルによる検証
 
@@ -24,10 +24,16 @@ macOS 27.0.1 / Apple Silicon arm64 / FBX C++ SDK 2020.3.11。Maya・MotionBuilde
 
 ## 自動テスト
 
-- ネイティブテスト: **219 assertions 合格**。73スロットすべての SDK 識別子、マッピング、A→T補正、スキン変形の追従、頂点・バインド保持、保存後の再読み込み、再補正、pre/post rotation、旧名、改名衝突、重複シェイプ、不正スケール、アニメーション拒否を検証。Flat については、複数・共有マテリアル、非スキンメッシュ、マテリアルなしメッシュ、既存シェーダー接続の置換、名前衝突、再適用、マテリアルの色・画像・透明度保持、バイナリ・ASCII 保存後の設定と接続を検証。埋め込みについては、元画像・準備キャッシュを隠した状態での FBX 単体の復元、同名で内容が違う画像、Diffuse 以外のチャンネル保持、外部参照版の不合格、画像不足・画像シーケンス・ASCII 埋め込みの拒否を検証。
-- CLI 結合テスト: **19件合格**。入力不変、出力の検査、JSON、再改名、既存 Character・既存出力の保護、不正な名前・角度、画像の曖昧さ、アニメーションを検証。Flat の適用・保存後チェック・再適用、オプション省略時の既存シェーダー保持に加え、標準の画像埋め込み、FBX だけの移動、外部参照版の埋め込み検査不合格、保存方式の引数検査、埋め込み失敗時の既存出力保護も検証。
+- ネイティブテスト: **248 assertions 合格**。73スロットすべての SDK 識別子、マッピング、A→T補正、スキン変形の追従、頂点・バインド保持、保存後の再読み込み、再補正、pre/post rotation、旧名、改名衝突、重複シェイプ、不正スケール、アニメーション拒否を検証。Flat については、複数・共有マテリアル、非スキンメッシュ、マテリアルなしメッシュ、既存シェーダー接続の置換、名前衝突、再適用、マテリアルの色・画像・透明度保持、バイナリ・ASCII 保存後の設定と接続を検証。埋め込みについては、元画像・準備キャッシュを隠した状態での FBX 単体の復元、同名で内容が違う画像、Diffuse 以外のチャンネル保持、外部参照版の不合格、画像不足・画像シーケンス・ASCII 埋め込みの拒否を検証。
+- CLI 結合テスト: **22件合格**。入力不変、出力の検査、JSON、再改名、既存 Character・既存出力の保護、不正な名前・角度、画像の曖昧さ、アニメーションを検証。Flat の適用・保存後チェック・再適用、オプション省略時の既存シェーダー保持に加え、標準の画像埋め込み、FBX だけの移動、外部参照版の埋め込み検査不合格、保存方式の引数検査、埋め込み失敗時の既存出力保護も検証。
 
-## Chis-A の画像埋め込み（2026-10-28）
+画像名・UV・動画接続・参照画像の設定保持・明示的リセットと再適用の回帰検証も合格しました。共有マテリアルで先頭 UV 名が異なる場合や、外部画像の Video パスの更新も検証しています。
+
+`configure` の標準モデル表示を FullShading に設定する変更も検証しました。バイナリ・ASCII の保存後に指定が保持され、ジオメトリ・マテリアルを変更しません。全4メッシュが参照 FBX と同じ表示指定の `Chis-A_textured_display.fbx` を生成しました。ユーザーの MotionBuilder 実機確認で、開いた初期状態からテクスチャとシェーダーが反映された表示になることを確認しました。[詳細](motionbuilder-display.md)を参照してください。
+
+## Chis-A の画像埋め込み（2026-10-28、初回出力）
+
+この節の `Chis-A_embedded.fbx` は、Windows で単色表示を再現した旧版です。利用する修正版は `data/output/texture-check/Chis-A_mobu_fixed.fbx` です。全27画像・UV・動画接続・Flat 設定が Windows で表示確認済みの候補と一致し、再生成版と候補の両方が入力とのデータ保持監査に合格しています。
 
 ユーザー提供の `data/input/tex/` を使い、`data/output/texture-check/Chis-A_embedded.fbx` を作成しました。画像は FBX 内に埋め込み、全4メッシュへ Flat を適用しています。以前の `Chis-A_mac.fbx` は外部参照版です。
 
@@ -37,7 +43,7 @@ macOS 27.0.1 / Apple Silicon arm64 / FBX C++ SDK 2020.3.11。Maya・MotionBuilde
 - 全27マテリアルについて、復元した Diffuse 画像と提供 PNG の SHA-256 が一致。
 - 入力 FBX と提供 PNG の SHA-256 は変更なし。モデルの頂点・UV・シェイプ・ウェイト・バインド行列などの保持検査にも合格。
 
-FBX は28,715,744バイト。検証結果は `data/output/texture-check/reports/embedded-summary.json`、データ保持は `Chis-A-embedded-preservation.json` に保存しています。開く側で `.fbm` が生成されることはありますが、渡すのは FBX だけで構いません。今回の埋め込み版を MotionBuilder で開いた結果はまだ確認していないため、`motionbuilder_verified` は false です。
+FBX は28,715,744バイト。検証結果は `data/output/texture-check/reports/embedded-summary.json`、データ保持は `Chis-A-embedded-preservation.json` に保存しています。開く側で `.fbm` が生成されることはありますが、渡すのは FBX だけで構いません。この旧版は後日の Windows / MotionBuilder 2026 テストで模様の表示に不合格となりました。画像の埋め込み検査に合格しても、表示の正常性を保証するものではありません。
 
 既存5モデルへの追加検証は `python3 scripts/validate_models.py --flat-shader --output tmp/embedded-model-validation --force` で実施しました。Chis-A / GUMI / Gakupo / Rakuteni は画像埋め込み・Flat・データ保持・入力不変の検査に合格しました。kiritan は、処理前 FBX に残る旧 `base_color_texture` / `alpha_texture` の元画像が見つからず、`texture.embed_source` で出力を停止しました。参照 `_MB` の Diffuse 画像だけでは、保持対象の旧チャンネルの画像まで補えません。画像を推測して代用したり、接続を削除して合格扱いにしたりはしていません。詳細は `tmp/embedded-model-validation/reports/summary.json` に記録しています。
 
@@ -57,12 +63,12 @@ FBX は28,715,744バイト。検証結果は `data/output/texture-check/reports/
 
 結果は `data/output/flat-shader/`、詳細は `data/output/flat-shader/reports/summary.json` と各モデルのレポートに保存しています。Gakupo / Chis-A / kiritan の参照 `_MB` にある Flat シェーダーについても、実装が検査する設定・バージョン情報との一致を確認しました。参照ファイルの全メッシュに Flat が接続されていることを合格条件にはしていません。
 
-これは FBX 内の設定と接続の検証です。MotionBuilder での読み込み・表示・透明部分の描画は未検証であり、`motionbuilder_verified` は false のままです。
+これは5モデルの FBX 内の設定と接続の検証です。後日の Windows テストで、Chis-A の修正候補のみ Flat の復元と模様の表示を確認しました。他モデルと透明部分の厳密な描画は未検証です。CLI は個別出力の実機検証を実行しないため、`motionbuilder_verified` は false のままです。
 
 ### 既存の表示確認
 
 FBX Review 1.5.4 で `Gakupo_mac.fbx` を読み込み、ソリッド表示でメッシュの腕が水平なTポーズになることを確認しました。全モデルのテクスチャ表示、肩・手首・指・足裏・衣服の見た目については、追加の目視確認が必要です。
 
-MotionBuilder の実行環境では確認していません。HIK の有効化、リターゲット、MotionBuilder 固有のグループやシェーダーとの完全互換は未確認であり、レポートでも `motionbuilder_verified: false` を維持します。SDK の再読み込みが通ったことを HIK の検証成功とは扱いません。
+Windows / MotionBuilder 2026 で Chis-A の修正候補の模様表示を確認しました。HIK の有効化、リターゲット、MotionBuilder 固有のグループやシェーダーとの完全互換は未確認であり、レポートでも `motionbuilder_verified: false` を維持します。SDK の再読み込みが通ったことを HIK の検証成功とは扱いません。
 
 参照 `_MB` にも脚の傾きや複数 Character があるため、ファイル全体の一致を合格条件にはしていません。詳細は [提供資料の解析](source-analysis.md) を参照してください。
