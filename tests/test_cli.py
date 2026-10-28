@@ -50,6 +50,17 @@ class CliTests(unittest.TestCase):
         self.assertFalse(r['output_written'])
         self.assertIn('pose.not_tpose', {f['code'] for f in r['findings']})
 
+    def test_configure_defaults_to_full_mesh_display(self):
+        result = self.configure('textured-display.fbx')
+        self.assertTrue(any(o.get('operation') == 'mesh_display' and o['shading_mode'] == 'full'
+                            for o in result['operations']))
+        checked = self.run_cli('check', OUT / 'textured-display.fbx', '--require-embedded-textures')
+        self.assertTrue(checked['scene']['meshes'])
+        self.assertTrue(all(m['full_shading'] for m in checked['scene']['meshes']))
+        # inspect/check must not silently change the loaded model's display hint.
+        before = self.run_cli('inspect', FIXTURES / 'apose.fbx')
+        self.assertFalse(any(m['full_shading'] for m in before['scene']['meshes']))
+
     def test_reject_input_overwrite(self):
         self.run_cli('configure', FIXTURES / 'apose.fbx', '--output', FIXTURES / 'apose.fbx',
                      '--name', 'Test_Miku', '--force', expected=1)

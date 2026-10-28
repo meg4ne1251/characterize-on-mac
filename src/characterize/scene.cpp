@@ -137,6 +137,8 @@ Json Scene::inventory() const {
         if (auto mesh=n->GetMesh()) {
             Json m=Json::object(), shapes=Json::array(), materials=Json::array();
             m["name"]=n->GetName(); m["control_points"]=mesh->GetControlPointsCount(); m["polygons"]=mesh->GetPolygonCount();
+            m["shading_mode"]=static_cast<int>(n->GetShadingMode());
+            m["full_shading"]=n->GetShadingMode()==FbxNode::eFullShading;
             for (const auto& sh : shapeNames(mesh)) shapes.push(sh);
             for (int i=0;i<n->GetMaterialCount();++i) materials.push(n->GetMaterial(i)->GetName());
             m["shapes"]=shapes; m["materials"]=materials;
@@ -319,6 +321,20 @@ std::vector<FbxNode*> skinMeshes(Scene& s, const Bones& bones) {
         if(match) result.push_back(n);
     }
     return result;
+}
+void applyTexturedDisplay(Scene& s, Report& report) {
+    size_t meshes=0;
+    // The supplied MotionBuilder reference meshes use Shading: U (FullShading).
+    // This is the FBX model display hint, not FBRenderer's global DisplayMode.
+    for(auto node:s.nodes())if(node->GetMesh()) {
+        node->SetShadingMode(FbxNode::eFullShading);++meshes;
+    }
+    Json op=Json::object();op["operation"]="mesh_display";op["shading_mode"]="full";
+    op["meshes"]=meshes;op["viewer_display_verified"]=false;report.operations.push(op);
+}
+void validateTexturedDisplay(Scene& s, Report& report) {
+    for(auto node:s.nodes())if(node->GetMesh() && node->GetShadingMode()!=FbxNode::eFullShading)
+        report.add("error","display.not_full_shading","保存後にテクスチャとシェーダーのモデル表示設定が失われました: "+nodePath(node));
 }
 void resetTextures(Scene& s, Report& report) {
     // Match the original MotionBuilder ApplyTextures.Reset(). In particular,
@@ -503,6 +519,6 @@ void validate(Scene& s, const Bones& bones, Report& report, double tolerance) {
         }
     }
     checkPose(bones,report,tolerance);
-    report.add("info","advice.finish","Flat / Lighted シェーダーの見た目と HIK Template の出力を確認してください。X-Ray / Texture+Shader の Viewer 設定はこの CLI の対象外です。");
+    report.add("info","advice.finish","Flat / Lighted シェーダーの見た目と HIK Template の出力を確認してください。FBX のモデル表示設定とは別に、Viewer 全体の Display 設定が適用される場合があります。");
 }
 }

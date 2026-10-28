@@ -33,6 +33,7 @@ void help() {
 結果は JSON で標準出力にも出力します。終了コード: 0=成功、2=チェック不合格、1=実行エラー。
 入力は変更しません。既存の出力を置換する場合だけ --force を指定してください。
 画像は標準で FBX に埋め込みます。--external-textures の場合は .assets も同梱してください。
+configure は全メッシュに FullShading のモデル表示設定を保存します。
 FBX 定義の作成と MotionBuilder の HIK ソルバ検証は別です。
 )";
 }
@@ -177,6 +178,7 @@ int main(int argc,char** argv) {
             if(report.ok())createCharacter(s,bones,o.name,o.replace,report);
             if(report.ok())createGroups(s,bones,o.name,report);
             if(report.ok()&&o.flat)applyFlatShader(s,report);
+            if(report.ok())applyTexturedDisplay(s,report);
             if(report.ok()) {
                 validate(s,bones,report,o.tolerance);
                 if(report.ok()||o.allowErrors) {
@@ -193,6 +195,8 @@ int main(int argc,char** argv) {
                         auto extracted=cacheFor(staging);
                         Scene reopened;reopened.load(staging,o.embed?extracted:fs::path());Report check;
                         auto reopenedBones=resolve(reopened,check,o.ns,true);validate(reopened,reopenedBones,check,o.tolerance);
+                        Report displayCheck;validateTexturedDisplay(reopened,displayCheck);
+                        check.findings.insert(check.findings.end(),displayCheck.findings.begin(),displayCheck.findings.end());
                         Report shaderCheck;
                         if(o.flat) {
                             validateFlatShaders(reopened,shaderCheck);
@@ -203,7 +207,7 @@ int main(int argc,char** argv) {
                             check.findings.insert(check.findings.end(),mediaCheck.findings.begin(),mediaCheck.findings.end());
                             check.operations.extend(mediaCheck.operations);
                         }
-                        if(!shaderCheck.ok()||!mediaCheck.ok()||(!check.ok()&&!o.allowErrors)) {
+                        if(!displayCheck.ok()||!shaderCheck.ok()||!mediaCheck.ok()||(!check.ok()&&!o.allowErrors)) {
                             report.add("error","export.roundtrip","保存後の再読み込みチェックに失敗しました。FBX は出力しません。",check.json());
                             fs::remove(staging);staging.clear();
                         } else {

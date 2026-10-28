@@ -46,6 +46,8 @@ void createCharacter(Scene& s, const Bones& bones, const std::string& name, bool
 void applyTextures(Scene& s, const fs::path& folder, Report& report);
 void applyReferenceTextures(Scene& s, Scene& reference, Report& report);
 void resetTextures(Scene& s, Report& report);
+void applyTexturedDisplay(Scene& s, Report& report);
+void validateTexturedDisplay(Scene& s, Report& report);
 bool isMotionBuilderShader(FbxObject* object);
 std::vector<FbxObject*> modelShaders(FbxNode* node);
 Json shaderInventory(FbxObject* shader);

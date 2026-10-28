@@ -82,6 +82,7 @@ void pipeline(Scene& s,Bones& bones,const fs::path& folder,Report& report) {
 }
 #include "shaders.h"
 #include "media.h"
+#include "display.h"
 int main(int argc,char** argv){
     try {
         if(argc==4&&std::string(argv[1])=="--audit") {
@@ -91,6 +92,7 @@ int main(int argc,char** argv){
         testShaders(root);
         testEmbeddedMedia(root);
         testTextureMapping(root);
+        testTexturedDisplay(root);
         Scene s;auto b=fixture(s,root);require(b.size()==73,"all 73 slots in fixture");
         auto before=deformed(s,0);require(near(before,global(b.at("LeftForeArm")).GetT()),"skin initially matches arm endpoint");
         auto points=meshNode(s)->GetMesh()->GetControlPoints();FbxVector4 original=points[0];
