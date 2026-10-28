@@ -12,10 +12,14 @@ inline void testEmbeddedMedia(const cmac::fs::path& root) {
     auto shared=FbxFileTexture::Create(s.scene,"SharedImage");
     auto video=FbxVideo::Create(s.scene,"SharedVideo");video->SetFileName((input/"Body.png").c_str());shared->ConnectSrcObject(video);
     shared->SetFileName("/missing/old-path/Body.png");mat->Emissive.ConnectSrcObject(shared);
+    fs::copy_file(input/"Body.png",input/"MeaningfulAtlas.png",fs::copy_options::overwrite_existing);
+    auto atlas=FbxFileTexture::Create(s.scene,"MeaningfulAtlas");atlas->SetFileName((input/"MeaningfulAtlas.png").c_str());mat->Ambient.ConnectSrcObject(atlas);
     s.extractedMedia=input; // Imported shared media can retain old path aliases.
     Report preparation;auto expected=prepareEmbeddedTextures(s,cache,preparation);
     require(preparation.ok(),"prepare embedded media: "+preparation.json().dump());
     require(textureFile(s,second)!=textureFile(s,shared),"different images with same basename keep distinct stored names");
+    require(textureFile(s,atlas).filename()=="MeaningfulAtlas.png","meaningful name survives even for duplicate content");
+    require(textureFile(s,second).stem().string().find("Body_")==0,"collisions retain the semantic stem");
     s.save(root/"external-media.fbx");s.save(root/"embedded-media.fbx",false,true);
     auto isolated=root/"media-isolated";fs::create_directories(isolated);
     fs::copy_file(root/"embedded-media.fbx",isolated/"only.fbx",fs::copy_options::overwrite_existing);
@@ -32,6 +36,7 @@ inline void testEmbeddedMedia(const cmac::fs::path& root) {
     validateEmbeddedTextures(reopened,extraction,check,&expected);
     require(check.ok(),"FBX alone restores all media with original images and preparation cache unavailable: "+check.json().dump());
     auto restored=static_cast<FbxSurfacePhong*>(meshNode(reopened)->GetMaterial(0));
+    require(textureFile(reopened,restored->Ambient.GetSrcObject<FbxFileTexture>(0)).filename()=="MeaningfulAtlas.png","semantic filename survives standalone embedded roundtrip");
     require(restored->Diffuse.GetSrcObjectCount<FbxFileTexture>()==1 && restored->NormalMap.GetSrcObjectCount<FbxFileTexture>()==1 && restored->Emissive.GetSrcObjectCount<FbxFileTexture>()==1,"material channel connections preserved in single FBX");
     auto wrong=expected;wrong["MissingImage"].insert("wrong-content");Report mismatch;validateEmbeddedTextures(reopened,extraction,mismatch,&wrong);
     require(!mismatch.ok(),"missing or changed embedded payload rejected");

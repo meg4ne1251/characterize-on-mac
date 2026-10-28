@@ -1,5 +1,6 @@
 #include "scene.h"
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -60,15 +61,37 @@ TextureManifest prepareEmbeddedTextures(Scene& s,const fs::path& folder,Report& 
         for(int j=0;j<texture->GetSrcObjectCount<FbxVideo>();++j)sequence|=texture->GetSrcObject<FbxVideo>(j)->GetImageSequence();
         if(sequence){report.add("error","texture.embed_sequence","画像シーケンスは FBX 単体へ埋め込めません: "+std::string(texture->GetName()));continue;}
         auto hash=digest(path);
-        // Content-based names prevent different images with the same basename
-        // from overwriting one another when an importer extracts embedded media.
-        images.push_back({texture,path,fs::absolute(folder)/(hash+path.extension().string()),hash});
+        images.push_back({texture,path,fs::absolute(folder)/path.filename(),hash});
         manifest[texture->GetName()].insert(hash);unique.insert(hash);
     }
     if(!report.ok())return manifest;
+    // Keep meaningful source names, even when two differently named images
+    // contain identical bytes. Only disambiguate actual filename collisions.
+    auto key=[](std::string name) {
+        std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return std::tolower(c);});
+        return name;
+    };
+    std::map<std::string,std::set<std::string>> contents;
+    for(const auto& image:images)contents[key(image.target.filename().string())].insert(image.hash);
+    std::set<std::string> reserved;
+    for(const auto& entry:contents)reserved.insert(entry.first);
+    std::map<std::pair<std::string,std::string>,fs::path> assigned;
+    for(auto& image:images) {
+        auto name=key(image.target.filename().string());
+        if(contents[name].size()==1)continue;
+        auto id=std::make_pair(name,image.hash);
+        if(!assigned.count(id)) {
+            auto stem=image.source.stem().string()+"_"+image.hash;
+            auto candidate=stem+image.source.extension().string();
+            for(int i=2;reserved.count(key(candidate));++i)candidate=stem+"_"+std::to_string(i)+image.source.extension().string();
+            reserved.insert(key(candidate));assigned[id]=fs::absolute(folder)/candidate;
+        }
+        image.target=assigned[id];
+    }
     if(!images.empty())fs::create_directories(folder);
     for(const auto& image:images) {
-        if(!fs::exists(image.target))fs::copy_file(image.source,image.target);
+        if(!fs::exists(image.target) || digest(image.target)!=image.hash)
+            fs::copy_file(image.source,image.target,fs::copy_options::overwrite_existing);
         auto relative=image.target.filename().string();
         for(int i=0;i<image.texture->GetSrcObjectCount<FbxVideo>();++i) {
             auto video=image.texture->GetSrcObject<FbxVideo>(i);
