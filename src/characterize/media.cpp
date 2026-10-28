@@ -7,7 +7,11 @@
 
 namespace cmac {
 namespace {
-std::vector<fs::path> texturePaths(Scene& s, FbxFileTexture* texture) {
+bool inside(const fs::path& file,const fs::path& folder) {
+    auto relative=fs::weakly_canonical(file).lexically_relative(fs::weakly_canonical(folder));
+    return !relative.empty() && *relative.begin()!=".." && relative!=".";
+}
+std::vector<fs::path> texturePaths(Scene& s, FbxFileTexture* texture, bool aliases=true) {
     std::vector<fs::path> paths;
     auto add=[&](const char* full,const char* relative) {
         if(full && *full)paths.emplace_back(full);
@@ -20,7 +24,7 @@ std::vector<fs::path> texturePaths(Scene& s, FbxFileTexture* texture) {
         add(video->GetFileName().Buffer(),video->GetRelativeFileName().Buffer());
     }
     add(texture->GetFileName(),texture->GetRelativeFileName());
-    if(!s.extractedMedia.empty()) {
+    if(aliases && !s.extractedMedia.empty()) {
         auto original=paths;
         for(const auto& path:original) {
             auto name=path.string();std::replace(name.begin(),name.end(),'\\','/');
@@ -40,12 +44,15 @@ std::string digest(const fs::path& path) {
     if(!stream.eof())throw std::runtime_error("画像の読み込みに失敗しました: "+path.string());
     std::ostringstream out;out<<std::hex<<hash<<'-'<<size;return out.str();
 }
-bool inside(const fs::path& file,const fs::path& folder) {
-    auto relative=fs::weakly_canonical(file).lexically_relative(fs::weakly_canonical(folder));
-    return !relative.empty() && *relative.begin()!=".." && relative!=".";
-}
 }
 fs::path textureFile(Scene& s,FbxFileTexture* texture) {
+    auto paths=texturePaths(s,texture,false);
+    // Imported embedded bytes take precedence over stale but still accessible
+    // source-machine paths. The CLI gives every import its own extraction folder.
+    if(!s.extractedMedia.empty())for(const auto& path:paths)
+        if(fs::is_regular_file(path)&&inside(path,s.extractedMedia))return fs::weakly_canonical(fs::absolute(path));
+    // Basename aliases are a last resort: another image in the scene can have
+    // the same basename but different contents from a valid external source.
     for(const auto& path:texturePaths(s,texture))if(fs::is_regular_file(path))return fs::weakly_canonical(fs::absolute(path));
     return {};
 }

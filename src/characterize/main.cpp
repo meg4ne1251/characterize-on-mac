@@ -5,6 +5,10 @@
 #include <iostream>
 #include <iomanip>
 #include <stdexcept>
+#include <cerrno>
+#include <cstdlib>
+#include <system_error>
+#include <unistd.h>
 
 using namespace cmac;
 namespace {
@@ -75,20 +79,43 @@ Options parse(int argc,char** argv) {
 fs::path normalized(const fs::path& p){return fs::weakly_canonical(fs::absolute(p));}
 fs::path cacheFor(const fs::path& p) {
     auto key=std::hash<std::string>{}(normalized(p).string());
-    return fs::absolute("tmp/embedded")/(p.stem().string()+"-"+std::to_string(key));
+    // Never let images extracted from an earlier version of this pathname
+    // satisfy a later import that has missing or changed embedded media.
+    auto parent=fs::absolute("tmp/embedded");fs::create_directories(parent);
+    auto pattern=(parent/(p.stem().string()+"-"+std::to_string(key)+"-XXXXXX")).string();
+    std::vector<char> buffer(pattern.begin(),pattern.end());buffer.push_back('\0');
+    if(!mkdtemp(buffer.data()))throw std::system_error(errno,std::generic_category(),"画像キャッシュを作成できません");
+    return fs::path(buffer.data());
 }
 void writable(const fs::path& path,const Options& o) {
     if(path.empty())return;
     if(normalized(path)==normalized(o.input))throw std::runtime_error("入力ファイルへの上書きは禁止しています。");
+    if(!o.textureReference.empty()&&normalized(path)==normalized(o.textureReference))throw std::runtime_error("参照 FBX への上書きは禁止しています。");
     if(fs::exists(path)&&!o.force)throw std::runtime_error("既に存在します。別の出力先か --force を指定してください: "+path.string());
     if(!fs::is_directory(fs::absolute(path).parent_path()))throw std::runtime_error("出力ディレクトリがありません: "+path.parent_path().string());
 }
+class TemporaryFile {
+    fs::path path_;
+public:
+    explicit TemporaryFile(const fs::path& destination) {
+        auto pattern=(destination.parent_path()/("."+destination.filename().string()+".XXXXXX")).string();
+        std::vector<char> buffer(pattern.begin(),pattern.end());buffer.push_back('\0');
+        int fd=mkstemp(buffer.data());
+        if(fd<0)throw std::system_error(errno,std::generic_category(),"一時ファイルを作成できません");
+        path_=buffer.data();close(fd);
+    }
+    ~TemporaryFile(){if(!path_.empty()){std::error_code ec;fs::remove(path_,ec);}}
+    TemporaryFile(const TemporaryFile&)=delete;
+    TemporaryFile& operator=(const TemporaryFile&)=delete;
+    const fs::path& path()const{return path_;}
+    void commit(const fs::path& destination){fs::rename(path_,destination);path_.clear();}
+};
 void writeReport(const fs::path& path,const Json& result) {
     if(path.empty())return;
-    auto temp=path;temp+=".tmp";
-    std::ofstream stream(temp);if(!stream)throw std::runtime_error("レポートを保存できません: "+path.string());
+    TemporaryFile temp(path);
+    std::ofstream stream(temp.path());if(!stream)throw std::runtime_error("レポートを保存できません: "+path.string());
     stream<<result.dump()<<'\n';stream.close();if(!stream)throw std::runtime_error("レポートの書き込みに失敗しました。");
-    fs::rename(temp,path);
+    temp.commit(path);
 }
 void rebaseTextures(Scene& s,const fs::path& output) {
     for(int i=0;i<s.scene->GetSrcObjectCount<FbxFileTexture>();++i) {
@@ -118,7 +145,11 @@ void packageTextures(Scene& s,const fs::path& output,Report& report) {
         file=normalized(file);
         if(!copied.count(file)) {
             fs::create_directories(folder);auto target=folder/(contentKey(file)+file.extension().string());
-            if(!fs::exists(target))fs::copy_file(file,target);
+            if(!fs::is_regular_file(target)||contentKey(target)!=contentKey(file)) {
+                TemporaryFile temp(target);
+                fs::copy_file(file,temp.path(),fs::copy_options::overwrite_existing);
+                temp.commit(target);
+            }
             copied[file]=target;
         }
         tex->SetFileName(copied.at(file).c_str());
@@ -144,7 +175,6 @@ int main(int argc,char** argv) {
             if(o.output.extension()!=".fbx")throw std::runtime_error("出力には .fbx 拡張子を指定してください。");
         }
         auto extraction=cacheFor(o.input);
-        if(o.requireEmbedded||o.command=="configure")extraction+="-verify-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         Scene s;s.load(o.input,extraction);Report report;
         bool useExisting=o.command!="configure"&&s.scene->GetCharacterCount()==1;
         Bones bones;
@@ -212,7 +242,8 @@ int main(int argc,char** argv) {
                             fs::remove(staging);staging.clear();
                         } else {
                             fs::rename(staging,o.output);staging.clear();wrote=true;
-                            report.add("info","export.roundtrip","FBX を保存し再読み込みしました。",check.json());
+                            report.add(check.ok()?"info":"error","export.roundtrip",
+                                       check.ok()?"FBX を保存し再読み込みしました。":"検査不合格の FBX を --allow-check-errors により保存しました。",check.json());
                         }
                     }
                 }

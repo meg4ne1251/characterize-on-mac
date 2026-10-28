@@ -112,6 +112,62 @@ class CliTests(unittest.TestCase):
         self.assertTrue(r['ok'])
         self.assertTrue(r['output_written'])
 
+    def test_report_temporary_symlink_cannot_modify_source(self):
+        with tempfile.TemporaryDirectory(dir=OUT) as temporary:
+            folder = Path(temporary)
+            source = folder / 'source.fbx'
+            shutil.copyfile(FIXTURES / 'apose.fbx', source)
+            before = source.read_bytes()
+            report = folder / 'report.json'
+            (folder / 'report.json.tmp').symlink_to(source)
+            self.run_cli('inspect', source, '--report', report)
+            self.assertEqual(source.read_bytes(), before)
+            self.assertTrue(json.loads(report.read_text())['ok'])
+
+    def test_external_assets_are_verified_before_reuse(self):
+        with tempfile.TemporaryDirectory(dir=OUT) as temporary:
+            folder = Path(temporary)
+            target = folder / 'external.fbx'
+            args = ('configure', FIXTURES / 'apose.fbx', '--name', 'Test_Miku',
+                    '--output', target, '--textures', FIXTURES, '--correct-tpose',
+                    '--external-textures', '--force')
+            self.run_cli(*args)
+            asset = next((folder / 'external.assets').iterdir())
+            original = asset.read_bytes()
+            # Atomic repair must also leave a symlink's destination untouched.
+            corrupted = folder / 'keep.png'
+            corrupted.write_bytes(b'corrupted packaged image')
+            asset.unlink()
+            asset.symlink_to(corrupted)
+            self.run_cli(*args)
+            self.assertEqual(asset.read_bytes(), original)
+            self.assertEqual(corrupted.read_bytes(), b'corrupted packaged image')
+
+    def test_texture_reference_cannot_be_overwritten(self):
+        with tempfile.TemporaryDirectory(dir=OUT) as temporary:
+            reference = Path(temporary) / 'reference.fbx'
+            shutil.copyfile(FIXTURES / 'mapping-reference.fbx', reference)
+            before = reference.read_bytes()
+            for destination in ('--output', '--report'):
+                self.run_cli('configure', FIXTURES / 'apose.fbx', '--name', 'Test_Miku',
+                             '--correct-tpose', '--texture-reference', reference,
+                             '--output', Path(temporary) / 'output.fbx', destination, reference,
+                             '--force', expected=1)
+                self.assertEqual(reference.read_bytes(), before)
+
+    def test_extraction_cache_cannot_supply_images_from_previous_fbx(self):
+        with tempfile.TemporaryDirectory(dir=OUT) as temporary:
+            source = Path(temporary) / 'changing.fbx'
+            shutil.copyfile(FIXTURES / 'review-embedded.fbx', source)
+            self.run_cli('check', source)
+            shutil.copyfile(FIXTURES / 'review-external-missing.fbx', source)
+            checked = self.run_cli('check', source, expected=2)
+            self.assertIn('check.texture_file', {f['code'] for f in checked['findings']})
+            configured = self.run_cli('configure', FIXTURES / 'apose.fbx', '--name', 'Test_Miku',
+                                      '--output', Path(temporary) / 'output.fbx', '--correct-tpose',
+                                      '--texture-reference', source, expected=2)
+            self.assertIn('texture.reference_file', {f['code'] for f in configured['findings']})
+
     def test_inspect_processed_and_raw(self):
         raw = self.run_cli('inspect', FIXTURES / 'apose.fbx')
         processed = self.run_cli('inspect', FIXTURES / 'configured.fbx')

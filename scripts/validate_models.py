@@ -28,6 +28,10 @@ def main():
     parser.add_argument('--flat-shader', action='store_true', help='全メッシュに Flat シェーダーを適用して保存後も検査する')
     parser.add_argument('--external-textures', action='store_true', help='画像を埋め込まず .assets に同梱する')
     args = parser.parse_args()
+    # Subprocesses run at ROOT, but CLI paths are relative to the caller.
+    args.input = args.input.resolve()
+    args.expected = args.expected.resolve()
+    args.output = args.output.resolve()
     binary = ROOT / 'build/characterize'
     audit = ROOT / 'build/native-tests'
     if not binary.is_file() or not audit.is_file():

@@ -20,7 +20,7 @@ static FbxVector4 difference(FbxNode* a,FbxNode* b) {
 }
 static double angle(FbxVector4 a,FbxVector4 b) {
     double la=a.Length(),lb=b.Length();
-    if(la<1e-9||lb<1e-9) return 180.0;
+    if(!std::isfinite(la)||!std::isfinite(lb)||la<1e-9||lb<1e-9) return 180.0;
     return std::acos(std::clamp(a.DotProduct(b)/(la*lb),-1.0,1.0))*180.0/pi;
 }
 Json poseAngles(const Bones& bones) {
@@ -35,7 +35,8 @@ Json poseAngles(const Bones& bones) {
 void checkPose(const Bones& bones,Report& report,double tolerance) {
     for(auto& seg:segments()) if(bones.count(seg.from)&&bones.count(seg.to)) {
         auto direction=difference(bones.at(seg.from),bones.at(seg.to));
-        if(direction.Length()<1e-9) report.add("error","pose.zero_length","長さがゼロのボーンです: "+std::string(seg.from));
+        if(!std::isfinite(direction.Length())) report.add("error","pose.nonfinite","ボーンの位置に有限でない値があります: "+std::string(seg.from));
+        else if(direction.Length()<1e-9) report.add("error","pose.zero_length","長さがゼロのボーンです: "+std::string(seg.from));
         else if(angle(direction,seg.target)>tolerance) {
             Json d=Json::object(); d["from"]=seg.from; d["to"]=seg.to; d["degrees"]=angle(direction,seg.target);
             report.add("error","pose.not_tpose","Tポーズから外れています: "+std::string(seg.from),d);
@@ -51,9 +52,12 @@ void checkPose(const Bones& bones,Report& report,double tolerance) {
 }
 static bool uniform(const FbxVector4& scale) {
     // Blender FBX exports in the supplied models contain float noise of a few ppm.
-    const double tolerance=1e-4*std::max({1.0,std::abs(scale[0]),std::abs(scale[1]),std::abs(scale[2])});
+    const double maximum=std::max({scale[0],scale[1],scale[2]});
+    const double minimum=std::min({scale[0],scale[1],scale[2]});
+    const double tolerance=1e-4*maximum;
     return scale[0]>1e-8 && scale[1]>1e-8 && scale[2]>1e-8 &&
-           std::abs(scale[0]-scale[1])<tolerance && std::abs(scale[1]-scale[2])<tolerance;
+           std::isfinite(scale[0]) && std::isfinite(scale[1]) && std::isfinite(scale[2]) &&
+           maximum-minimum<tolerance;
 }
 void correctPose(Scene& s,const Bones& bones,Report& report,double maxAngle) {
     validateSkeleton(bones,report);

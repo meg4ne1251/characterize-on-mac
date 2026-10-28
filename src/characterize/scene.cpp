@@ -448,10 +448,6 @@ static bool effectiveVisible(FbxNode* n) {
     for(auto p=n;p;p=p->GetParent()) if(p->Visibility.Get()<=0 || !p->Show.Get()) return false;
     return true;
 }
-static bool textureExists(Scene& s,FbxFileTexture* tex) {
-    fs::path abs=tex->GetFileName(), rel=tex->GetRelativeFileName();
-    return (!abs.empty()&&fs::is_regular_file(abs)) || (!rel.empty()&&fs::is_regular_file(s.source.parent_path()/rel));
-}
 void validate(Scene& s, const Bones& bones, Report& report, double tolerance) {
     auto count=s.scene->GetCharacterCount();
     if(count!=1) report.add("error","check.character_count","Character は1つ必要です。現在: "+std::to_string(count));
@@ -501,7 +497,7 @@ void validate(Scene& s, const Bones& bones, Report& report, double tolerance) {
         auto prop=mat->FindProperty(FbxSurfaceMaterial::sDiffuse);
         if(prop.GetSrcObjectCount<FbxLayeredTexture>()) report.add("warning","check.layered_texture","レイヤーテクスチャは手動の見た目確認が必要です: "+std::string(mat->GetName()));
         if(!prop.GetSrcObjectCount<FbxFileTexture>()&&!prop.GetSrcObjectCount<FbxLayeredTexture>()) report.add("error","check.texture","Diffuse テクスチャがありません: "+std::string(mat->GetName()));
-        for(int i=0;i<prop.GetSrcObjectCount<FbxFileTexture>();++i) if(!textureExists(s,prop.GetSrcObject<FbxFileTexture>(i))) report.add("error","check.texture_file","画像ファイルが見つかりません: "+std::string(prop.GetSrcObject<FbxFileTexture>(i)->GetFileName()));
+        for(int i=0;i<prop.GetSrcObjectCount<FbxFileTexture>();++i) if(textureFile(s,prop.GetSrcObject<FbxFileTexture>(i)).empty()) report.add("error","check.texture_file","画像ファイルが見つかりません: "+std::string(prop.GetSrcObject<FbxFileTexture>(i)->GetFileName()));
     }
     if(count==1) for(auto kind:{"Skeleton","Mesh"}) {
         auto name=std::string(s.scene->GetCharacter(0)->GetName())+"/"+kind;

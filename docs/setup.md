@@ -38,7 +38,7 @@ build/characterize check data/output/Gakupo_mac.fbx --report tmp/check.json
 
 `check` は規格と Tポーズを検査します。角度の許容値は既定で1度です。MotionBuilder の警告基準を再現したものではありません。
 
-埋め込み画像は `tmp/embedded/` のファイルごとのキャッシュに展開します。入力 FBX や、その隣のディレクトリへは書き込みません。キャッシュは削除して構いません。
+埋め込み画像は `tmp/embedded/` の読み込みごとに新しいキャッシュへ展開します。同じパスの FBX が差し替わった場合にも、以前の画像を流用しません。入力 FBX や、その隣のディレクトリへは書き込みません。キャッシュは削除して構いません。
 
 ## 規格化と Tポーズ補正
 
@@ -108,7 +108,7 @@ build/characterize configure data/expected/Megane_TETO_MB.fbx \
 
 `--rename-from-character` は Character が1つの場合に使えます。通常の処理でも、既知の旧命名（`Arm_L`、`HandIndex_L1`、`HandIndex_L.0` など）は現行名へ正規化します。名前空間は保持します。複数の同名ボーンがある場合は `--namespace 名前空間` を指定します。Spine の番号ずれや不明な命名は推測しません。
 
-既存の出力・レポートへ再出力するときは `--force` を追加します。入力 FBX 自体への上書きは禁止しています。
+既存の出力・レポートへ再出力するときは `--force` を追加します。入力 FBX と `--texture-reference` の参照 FBX への上書きは禁止しています。
 
 ## Flat シェーダーの適用
 

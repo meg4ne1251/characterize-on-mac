@@ -83,6 +83,7 @@ void pipeline(Scene& s,Bones& bones,const fs::path& folder,Report& report) {
 #include "shaders.h"
 #include "media.h"
 #include "display.h"
+#include "review.h"
 int main(int argc,char** argv){
     try {
         if(argc==4&&std::string(argv[1])=="--audit") {
@@ -143,6 +144,7 @@ int main(int argc,char** argv){
             rename.save(root/"rename.fbx");Report r;renameBones(rename,nb,r);require(r.ok(),"two phase renaming: "+r.json().dump());
             require(std::string(nb.at("Spine1")->GetName())=="Spine2","spine collision safely renamed");
         }
+        testReviewRegressions(root);
         std::cout<<"PASS "<<assertions<<" native assertions; fixtures: "<<root<<'\n';return 0;
     }catch(const std::exception& ex){std::cerr<<"FAIL: "<<ex.what()<<'\n';return 1;}
 }
