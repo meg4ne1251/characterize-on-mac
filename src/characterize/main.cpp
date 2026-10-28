@@ -12,7 +12,7 @@ struct Options {
     std::string command, name, ns;
     fs::path input,output,textures,textureReference,report;
     bool correct=false,rename=false,replace=false,force=false,allowErrors=false,flat=false,requireFlat=false;
-    bool embed=true,storageOption=false,requireEmbedded=false;
+    bool embed=true,storageOption=false,requireEmbedded=false,reset=false;
     double tolerance=1.0,maxAngle=75.0;
 };
 void help() {
@@ -24,6 +24,7 @@ void help() {
   characterize configure INPUT.fbx --output OUTPUT.fbx --name Vimii_Miku
       [--textures DIRECTORY] [--correct-tpose] [--rename-from-character]
       [--texture-reference PROCESSED.fbx]
+      [--reset-textures]
       [--flat-shader]
       [--embed-textures | --external-textures]
       [--replace-character] [--namespace NAME] [--report report.json]
@@ -48,6 +49,7 @@ Options parse(int argc,char** argv) {
         else if(a=="--namespace")o.ns=value();else if(a=="--correct-tpose")o.correct=true;
         else if(a=="--flat-shader")o.flat=true;else if(a=="--require-flat-shader")o.requireFlat=true;
         else if(a=="--require-embedded-textures")o.requireEmbedded=true;
+        else if(a=="--reset-textures")o.reset=true;
         else if(a=="--embed-textures"||a=="--external-textures") {
             if(o.storageOption)throw std::runtime_error("画像の保存方式は1つ指定してください。");
             o.embed=a=="--embed-textures";o.storageOption=true;
@@ -62,9 +64,10 @@ Options parse(int argc,char** argv) {
     }
     if(o.command=="configure"&&(o.output.empty()||o.name.empty()))throw std::runtime_error("configure には --output と --name が必要です。");
     if(!o.textures.empty()&&!o.textureReference.empty())throw std::runtime_error("--textures と --texture-reference はどちらか一方を指定してください。");
+    if(o.reset&&o.textures.empty()&&o.textureReference.empty())throw std::runtime_error("--reset-textures には --textures または --texture-reference が必要です。");
     if(o.requireFlat&&o.command!="check")throw std::runtime_error("--require-flat-shader は check で使用してください。");
     if(o.requireEmbedded&&o.command!="check")throw std::runtime_error("--require-embedded-textures は check で使用してください。");
-    if(o.command!="configure"&&(!o.output.empty()||!o.name.empty()||!o.textures.empty()||!o.textureReference.empty()||o.correct||o.rename||o.replace||o.allowErrors||o.flat||o.storageOption))
+    if(o.command!="configure"&&(!o.output.empty()||!o.name.empty()||!o.textures.empty()||!o.textureReference.empty()||o.correct||o.rename||o.replace||o.allowErrors||o.flat||o.storageOption||o.reset))
         throw std::runtime_error("変更用オプションは configure で使用してください。");
     return o;
 }
@@ -109,11 +112,8 @@ void packageTextures(Scene& s,const fs::path& output,Report& report) {
     auto folder=fs::absolute(output).parent_path()/(output.stem().string()+".assets");
     std::map<fs::path,fs::path> copied;
     for(int i=0;i<s.scene->GetSrcObjectCount<FbxFileTexture>();++i) {
-        auto tex=s.scene->GetSrcObject<FbxFileTexture>(i);fs::path file=tex->GetFileName(),relative=tex->GetRelativeFileName();
-        if(file.empty()||!fs::is_regular_file(file)) {
-            if(!relative.empty()&&fs::is_regular_file(s.source.parent_path()/relative))file=s.source.parent_path()/relative;
-            else continue;
-        }
+        auto tex=s.scene->GetSrcObject<FbxFileTexture>(i);auto file=textureFile(s,tex);
+        if(file.empty())continue;
         file=normalized(file);
         if(!copied.count(file)) {
             fs::create_directories(folder);auto target=folder/(contentKey(file)+file.extension().string());
@@ -121,7 +121,14 @@ void packageTextures(Scene& s,const fs::path& output,Report& report) {
             copied[file]=target;
         }
         tex->SetFileName(copied.at(file).c_str());
-        tex->SetRelativeFileName(copied.at(file).lexically_relative(fs::absolute(output).parent_path()).c_str());
+        auto relative=copied.at(file).lexically_relative(fs::absolute(output).parent_path());
+        tex->SetRelativeFileName(relative.c_str());
+        // Keep the explicit MotionBuilder video connections on the packaged
+        // image too; an old absolute video path must not override the texture.
+        for(int j=0;j<tex->GetSrcObjectCount<FbxVideo>();++j) {
+            auto video=tex->GetSrcObject<FbxVideo>(j);
+            video->SetFileName(copied.at(file).c_str());video->SetRelativeFileName(relative.c_str());
+        }
     }
     Json op=Json::object();op["packaged_images"]=copied.size();op["folder"]=folder.string();report.operations.push(op);
 }
@@ -162,6 +169,7 @@ int main(int argc,char** argv) {
             if(report.ok())renameBones(s,bones,report);
             if(report.ok()&&o.correct)correctPose(s,bones,report,o.maxAngle);
             if(report.ok())checkPose(bones,report,o.tolerance);
+            if(report.ok()&&o.reset)resetTextures(s,report);
             if(report.ok()&&!o.textures.empty())applyTextures(s,o.textures,report);
             if(report.ok()&&!o.textureReference.empty()) {
                 Scene reference;reference.load(o.textureReference,cacheFor(o.textureReference));applyReferenceTextures(s,reference,report);

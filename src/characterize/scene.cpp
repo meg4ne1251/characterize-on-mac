@@ -162,6 +162,19 @@ Json Scene::inventory() const {
         auto prop=mat->FindProperty(FbxSurfaceMaterial::sDiffuse);
         for (int j=0;j<prop.GetSrcObjectCount<FbxFileTexture>();++j) {
             auto tex=prop.GetSrcObject<FbxFileTexture>(j); Json t=Json::object();
+            t["name"]=tex->GetName();t["uv_set"]=tex->UVSet.Get().Buffer();
+            t["mapping_type"]=static_cast<int>(tex->GetMappingType());
+            t["use_material"]=tex->GetMaterialUse()==FbxFileTexture::eModelMaterial;
+            Json videos=Json::array();
+            auto videoProperty=tex->FindProperty("VideoProperty");
+            for(int k=0;k<tex->GetSrcObjectCount<FbxVideo>();++k) {
+                auto video=tex->GetSrcObject<FbxVideo>(k);Json v=Json::object();
+                v["name"]=video->GetName();v["file"]=video->GetFileName().Buffer();
+                v["relative_file"]=video->GetRelativeFileName().Buffer();
+                v["video_property_connected"]=videoProperty.IsValid() && videoProperty.IsConnectedSrcObject(video);
+                videos.push(v);
+            }
+            t["videos"]=videos;
             t["file"]=tex->GetFileName(); t["relative_file"]=tex->GetRelativeFileName(); texs.push(t);
         }
         m["diffuse_textures"]=texs; mats.push(m);
@@ -307,6 +320,38 @@ std::vector<FbxNode*> skinMeshes(Scene& s, const Bones& bones) {
     }
     return result;
 }
+void resetTextures(Scene& s, Report& report) {
+    // Match the original MotionBuilder ApplyTextures.Reset(). In particular,
+    // Blender's alpha_texture connections must not keep driving transparency.
+    size_t textures=0,videos=0;
+    while(s.scene->GetSrcObjectCount<FbxTexture>()) {
+        s.scene->GetSrcObject<FbxTexture>(0)->Destroy();++textures;
+    }
+    while(s.scene->GetSrcObjectCount<FbxVideo>()) {
+        s.scene->GetSrcObject<FbxVideo>(0)->Destroy();++videos;
+    }
+    Json op=Json::object();op["operation"]="reset_textures";op["textures"]=textures;op["videos"]=videos;
+    report.operations.push(op);
+}
+static std::string primaryUV(Scene& s,FbxSurfaceMaterial* material) {
+    std::set<std::string> names;
+    for(auto node:s.nodes())if(auto mesh=node->GetMesh()) {
+        for(int i=0;i<node->GetMaterialCount();++i)if(node->GetMaterial(i)==material && mesh->GetElementUVCount())
+            names.insert(mesh->GetElementUV(0)->GetName());
+    }
+    // An empty UVSet selects each mesh's first set, as MotionBuilder exports do.
+    return names.size()==1?*names.begin():"";
+}
+static void connectTextureVideo(Scene& s,FbxFileTexture* texture,const fs::path& path) {
+    auto video=FbxVideo::Create(s.scene,path.filename().c_str());
+    video->SetFileName(path.c_str());video->SetRelativeFileName(path.filename().c_str());
+    texture->ConnectSrcObject(video);
+    // MotionBuilder exports both the standard OO connection and an OP
+    // connection to VideoProperty. The SDK's automatic export only adds OO.
+    auto property=texture->FindProperty("VideoProperty");
+    if(!property.IsValid())property=FbxProperty::Create(texture,FbxReferenceDT,"VideoProperty");
+    property.ConnectSrcObject(video);
+}
 void applyTextures(Scene& s, const fs::path& folder, Report& report) {
     if(!fs::is_directory(folder)) {report.add("error","texture.directory","テクスチャフォルダがありません: "+folder.string());return;}
     std::map<std::string,std::vector<fs::path>> images;
@@ -331,9 +376,12 @@ void applyTextures(Scene& s, const fs::path& folder, Report& report) {
         prop.DisconnectAllSrcObject();
         auto tex=FbxFileTexture::Create(s.scene,(leaf(mat->GetName())+"_Diffuse").c_str());
         tex->SetFileName(path.c_str()); tex->SetTextureUse(FbxTexture::eStandard);
-        tex->SetMappingType(FbxTexture::eUV); tex->SetMaterialUse(FbxFileTexture::eModelMaterial);
+        tex->SetMappingType(FbxTexture::eUV); tex->SetMaterialUse(FbxFileTexture::eDefaultMaterial);
+        tex->UVSet.Set(FbxString(primaryUV(s,mat).c_str()));
+        connectTextureVideo(s,tex,path);
         prop.ConnectSrcObject(tex);
-        Json op=Json::object(); op["material"]=mat->GetName(); op["diffuse_image"]=path.string(); report.operations.push(op);
+        Json op=Json::object(); op["material"]=mat->GetName(); op["diffuse_image"]=path.string();
+        op["uv_set"]=tex->UVSet.Get().Buffer();op["use_material"]=false;report.operations.push(op);
     }
 }
 void applyReferenceTextures(Scene& s, Scene& reference, Report& report) {
@@ -343,23 +391,26 @@ void applyReferenceTextures(Scene& s, Scene& reference, Report& report) {
     }
     std::set<FbxSurfaceMaterial*> used;
     for(auto n:s.nodes())for(int i=0;i<n->GetMaterialCount();++i)used.insert(n->GetMaterial(i));
-    std::vector<std::pair<FbxSurfaceMaterial*,fs::path>> planned;
+    struct ReferenceImage {FbxSurfaceMaterial* material;FbxFileTexture* texture;fs::path path;};
+    std::vector<ReferenceImage> planned;
     for(auto mat:used) {
         auto found=byName.find(leaf(mat->GetName()));
         if(found==byName.end()||found->second.size()!=1){report.add("error","texture.reference_material","参照 FBX のマテリアルがないか曖昧です: "+std::string(mat->GetName()));continue;}
         auto prop=found->second[0]->FindProperty(FbxSurfaceMaterial::sDiffuse);
         if(prop.GetSrcObjectCount<FbxFileTexture>()!=1){report.add("error","texture.reference_diffuse","参照マテリアルに単一の Diffuse 画像がありません: "+std::string(mat->GetName()));continue;}
-        auto tex=prop.GetSrcObject<FbxFileTexture>(0);fs::path path=tex->GetFileName(),rel=tex->GetRelativeFileName();
-        if(!fs::is_regular_file(path)&&!rel.empty())path=reference.source.parent_path()/rel;
-        if(!fs::is_regular_file(path)){report.add("error","texture.reference_file","参照 FBX の画像を取得できません: "+std::string(mat->GetName()));continue;}
+        auto tex=prop.GetSrcObject<FbxFileTexture>(0);auto path=textureFile(reference,tex);
+        if(path.empty()){report.add("error","texture.reference_file","参照 FBX の画像を取得できません: "+std::string(mat->GetName()));continue;}
         if(!mat->FindProperty(FbxSurfaceMaterial::sDiffuse).IsValid()){report.add("error","texture.no_diffuse","Diffuse がありません: "+std::string(mat->GetName()));continue;}
-        planned.emplace_back(mat,fs::absolute(path));
+        planned.push_back({mat,tex,path});
     }
     if(!report.ok())return;
-    for(auto [mat,path]:planned) {
+    for(auto [mat,source,path]:planned) {
         auto prop=mat->FindProperty(FbxSurfaceMaterial::sDiffuse);prop.DisconnectAllSrcObject();
-        auto tex=FbxFileTexture::Create(s.scene,(leaf(mat->GetName())+"_Diffuse").c_str());tex->SetFileName(path.c_str());
-        tex->SetMappingType(FbxTexture::eUV);tex->SetTextureUse(FbxTexture::eStandard);tex->SetMaterialUse(FbxFileTexture::eModelMaterial);prop.ConnectSrcObject(tex);
+        auto tex=FbxFileTexture::Create(s.scene,source->GetName());
+        // Copy values, not video/object connections owned by the other manager.
+        tex->Copy(*source);tex->SetFileName(path.c_str());tex->SetRelativeFileName(path.filename().c_str());
+        connectTextureVideo(s,tex,path);
+        prop.ConnectSrcObject(tex);
         Json op=Json::object();op["material"]=mat->GetName();op["reference_diffuse"]=path.string();report.operations.push(op);
     }
 }
@@ -412,6 +463,17 @@ void validate(Scene& s, const Bones& bones, Report& report, double tolerance) {
         for(int i=0;i<n->GetMaterialCount();++i) materials.insert(n->GetMaterial(i));
         if(n->GetMaterialCount()==0) report.add("error","check.material","マテリアルがありません: "+nodePath(n));
         if(n->GetMesh()->GetElementUVCount()==0) report.add("error","check.uv","UV がありません: "+nodePath(n));
+        for(int i=0;i<n->GetMaterialCount();++i) {
+            auto diffuse=n->GetMaterial(i)->FindProperty(FbxSurfaceMaterial::sDiffuse);
+            for(int j=0;j<diffuse.GetSrcObjectCount<FbxFileTexture>();++j) {
+                auto texture=diffuse.GetSrcObject<FbxFileTexture>(j);
+                auto uv=std::string(texture->UVSet.Get().Buffer());
+                if(texture->GetMappingType()!=FbxTexture::eUV || uv.empty())continue;
+                bool found=false;
+                for(int k=0;k<n->GetMesh()->GetElementUVCount();++k)found|=uv==n->GetMesh()->GetElementUV(k)->GetName();
+                if(!found)report.add("error","check.texture_uv","テクスチャの指定する UV がメッシュにありません: "+nodePath(n)+" / "+texture->GetName()+" / "+uv);
+            }
+        }
     }
     for(auto& [shape,owners]:shapes) if(owners.size()>1) {
         Json list=Json::array(); for(auto& owner:owners) list.push(owner);

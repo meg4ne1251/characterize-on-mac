@@ -192,6 +192,35 @@ class CliTests(unittest.TestCase):
         self.run_cli('inspect', FIXTURES / 'configured.fbx', '--require-embedded-textures', expected=1)
         self.configure('conflicting-storage.fbx', '--embed-textures', '--external-textures', expected=1)
 
+    def test_reset_textures_and_semantic_filenames(self):
+        result = self.run_cli('configure', FIXTURES / 'missing-media.fbx', '--name', 'Test_Miku',
+                              '--output', OUT / 'reset.fbx', '--textures', FIXTURES,
+                              '--reset-textures', '--force')
+        self.assertTrue(result['output_written'])
+        self.assertTrue(any(o.get('operation') == 'reset_textures' for o in result['operations']))
+        checked = self.run_cli('check', OUT / 'reset.fbx', '--require-embedded-textures')
+        texture = checked['scene']['materials'][0]['diffuse_textures'][0]
+        self.assertEqual(Path(texture['file']).name, 'Body.png')
+        self.assertEqual(texture['uv_set'], 'UVMap')
+        self.assertFalse(texture['use_material'])
+        self.assertEqual(len(texture['videos']), 1)
+        self.assertTrue(texture['videos'][0]['video_property_connected'])
+        self.run_cli('configure', FIXTURES / 'apose.fbx', '--name', 'Test_Miku',
+                     '--output', OUT / 'invalid-reset.fbx', '--reset-textures', expected=1)
+        self.run_cli('check', FIXTURES / 'apose.fbx', '--textures', FIXTURES,
+                     '--reset-textures', expected=1)
+
+    def test_external_texture_video_paths(self):
+        self.configure('external-bindings.fbx', '--textures', FIXTURES,
+                       '--reset-textures', '--external-textures')
+        checked = self.run_cli('check', OUT / 'external-bindings.fbx')
+        texture = checked['scene']['materials'][0]['diffuse_textures'][0]
+        video = texture['videos'][0]
+        self.assertEqual(Path(video['file']), Path(texture['file']))
+        self.assertEqual(Path(video['file']).parent, OUT / 'external-bindings.assets')
+        self.assertEqual(video['relative_file'], texture['relative_file'])
+        self.assertTrue(video['video_property_connected'])
+
     def test_missing_embedded_media_cannot_be_waived(self):
         target = OUT / 'preserve-on-embed-error.fbx'
         target.write_bytes(b'preserve existing output')

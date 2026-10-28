@@ -45,6 +45,7 @@ void renameBones(Scene& s, const Bones& bones, Report& report);
 void createCharacter(Scene& s, const Bones& bones, const std::string& name, bool replace, Report& report);
 void applyTextures(Scene& s, const fs::path& folder, Report& report);
 void applyReferenceTextures(Scene& s, Scene& reference, Report& report);
+void resetTextures(Scene& s, Report& report);
 bool isMotionBuilderShader(FbxObject* object);
 std::vector<FbxObject*> modelShaders(FbxNode* node);
 Json shaderInventory(FbxObject* shader);

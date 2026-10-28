@@ -55,3 +55,62 @@ inline void testEmbeddedMedia(const cmac::fs::path& root) {
     auto sequenceVideo=FbxVideo::Create(sequence.scene,"SequenceVideo");sequenceVideo->SetFileName((root/"Body.png").c_str());sequenceVideo->SetImageSequence(true);sequenceTexture->ConnectSrcObject(sequenceVideo);
     Report sequenceReport;prepareEmbeddedTextures(sequence,root/"sequence-media-cache",sequenceReport);require(!sequenceReport.ok(),"image sequences cannot silently skip embedding");
 }
+
+inline void testTextureMapping(const cmac::fs::path& root) {
+    using namespace cmac;
+    Scene source;auto bones=fixture(source,root/"mapping-source",false);Report setup;applyTextures(source,root/"mapping-source",setup);
+    auto material=static_cast<FbxSurfacePhong*>(meshNode(source)->GetMaterial(0));
+    auto texture=material->Diffuse.GetSrcObject<FbxFileTexture>(0);
+    require(setup.ok() && texture->UVSet.Get()=="UVMap","directory textures select a real UV set");
+    require(texture->GetMaterialUse()==FbxFileTexture::eDefaultMaterial,"material use matches MotionBuilder reference");
+    require(texture->FindProperty("VideoProperty").GetSrcObject<FbxVideo>(0)==texture->GetSrcObject<FbxVideo>(0),"MotionBuilder VideoProperty points to the standard image media");
+    texture->UVSet.Set(FbxString("missing-uv"));Report invalidUV;validate(source,bones,invalidUV,1);
+    bool uvError=false;for(const auto& finding:invalidUV.findings)uvError|=finding.code=="check.texture_uv";
+    require(uvError,"UV validation catches an existing image with an invalid mapping");texture->UVSet.Set(FbxString("UVMap"));
+    texture->SetTranslation(0.2,0.3);texture->SetScale(2,3);texture->SetRotation(0,0,45);
+    texture->SetWrapMode(FbxTexture::eClamp,FbxTexture::eRepeat);texture->SetSwapUV(true);
+    texture->SetName("MeaningfulBodyTexture");source.save(root/"mapping-reference.fbx",false,true);
+    Scene target;fixture(target,root/"mapping-target",false);
+    {
+        Scene reference;reference.load(root/"mapping-reference.fbx",root/"mapping-extracted");
+        Report copied;applyReferenceTextures(target,reference,copied);
+        require(copied.ok(),"embedded reference image resolution: "+copied.json().dump());
+    }
+    auto targetMaterial=static_cast<FbxSurfacePhong*>(meshNode(target)->GetMaterial(0));
+    auto copied=targetMaterial->Diffuse.GetSrcObject<FbxFileTexture>(0);
+    require(std::string(copied->GetName())=="MeaningfulBodyTexture" && copied->UVSet.Get()=="UVMap","reference name and UV selection preserved");
+    require(copied->GetTranslationU()==0.2 && copied->GetTranslationV()==0.3 && copied->GetScaleU()==2 && copied->GetScaleV()==3 && copied->GetRotationW()==45,"reference texture transforms preserved");
+    require(copied->GetWrapModeU()==FbxTexture::eClamp && copied->GetSwapUV() && copied->GetMaterialUse()==FbxFileTexture::eDefaultMaterial,"reference sampling settings preserved");
+    require(fs::is_regular_file(textureFile(target,copied)),"copied image survives reference manager destruction");
+    targetMaterial->TransparencyFactor.ConnectSrcObject(copied);
+    auto video=FbxVideo::Create(target.scene,"OldVideo");video->SetFileName((root/"mapping-target/Body.png").c_str());
+    auto nodeCount=target.nodes().size();auto diffuse=targetMaterial->Diffuse.Get();Report reset;resetTextures(target,reset);
+    require(reset.ok() && target.scene->GetSrcObjectCount<FbxTexture>()==0 && target.scene->GetSrcObjectCount<FbxVideo>()==0,"reset removes stale textures and media");
+    require(targetMaterial->TransparencyFactor.GetSrcObjectCount()==0,"reset disconnects Blender alpha inputs");
+    require(target.nodes().size()==nodeCount && targetMaterial->Diffuse.Get()==diffuse,"reset keeps geometry and material values");
+    Report reapplied;applyTextures(target,root/"mapping-target",reapplied);
+    target.save(root/"mapping-reset.fbx",false,true);
+    Scene reopened;reopened.load(root/"mapping-reset.fbx",root/"mapping-reset-extract");
+    auto restored=meshNode(reopened)->GetMaterial(0)->FindProperty(FbxSurfaceMaterial::sDiffuse).GetSrcObject<FbxFileTexture>(0);
+    require(restored!=nullptr,"reset and new diffuse connection survive export");
+    auto restoredVideo=restored->FindProperty("VideoProperty").GetSrcObject<FbxVideo>(0);
+    require(restoredVideo && restoredVideo==restored->GetSrcObject<FbxVideo>(0),"MotionBuilder property and standard video connections survive export");
+    require(restored->UVSet.Get()=="UVMap" && restored->GetMaterialUse()==FbxFileTexture::eDefaultMaterial,"valid UV selection and material use survive embedded export");
+
+    // One material can be shared by meshes with different UV set names.
+    // In that case MotionBuilder must select the first set on each mesh.
+    auto second=FbxNode::Create(target.scene,"SecondMesh");
+    auto secondMesh=FbxMesh::Create(target.scene,"SecondMeshGeometry");
+    second->SetNodeAttribute(secondMesh);target.scene->GetRootNode()->AddChild(second);
+    second->AddMaterial(targetMaterial);secondMesh->CreateElementUV("UV1");
+    Report shared;resetTextures(target,shared);applyTextures(target,root/"mapping-target",shared);
+    auto sharedTexture=targetMaterial->Diffuse.GetSrcObject<FbxFileTexture>(0);
+    require(shared.ok() && sharedTexture->UVSet.Get()=="","shared materials use each mesh's primary UV when names differ");
+    Report sharedCheck;auto targetBones=resolve(target,sharedCheck,"",false);validate(target,targetBones,sharedCheck,1);
+    bool sharedUVError=false;for(const auto& finding:sharedCheck.findings)sharedUVError|=finding.code=="check.texture_uv";
+    require(!sharedUVError,"empty UV selection is valid across differently named primary sets");
+    meshNode(target)->GetMesh()->GetElementUV(0)->SetName("default");
+    secondMesh->GetElementUV(0)->SetName("default");
+    Report namedDefault;resetTextures(target,namedDefault);applyTextures(target,root/"mapping-target",namedDefault);
+    require(targetMaterial->Diffuse.GetSrcObject<FbxFileTexture>(0)->UVSet.Get()=="default","default is valid when it is an actual primary UV name");
+}
